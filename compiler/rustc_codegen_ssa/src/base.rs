@@ -33,7 +33,7 @@ use rustc_session::Session;
 use rustc_session::config::{self, CrateType, EntryFnType};
 use rustc_span::{DUMMY_SP, Symbol};
 use rustc_symbol_mangling::mangle_internal_symbol;
-use rustc_target::spec::{Arch, Os};
+use rustc_target::spec::{Arch, EhModel, Os};
 use rustc_trait_selection::infer::{BoundRegionConversionTime, TyCtxtInferExt};
 use rustc_trait_selection::traits::{ObligationCause, ObligationCtxt};
 use tracing::{debug, info};
@@ -382,7 +382,12 @@ pub fn wants_wasm_eh(sess: &Session) -> bool {
 /// currently uses SEH-ish unwinding with DWARF info tables to the side (same as
 /// 64-bit MinGW) instead of "full SEH".
 pub fn wants_msvc_seh(sess: &Session) -> bool {
-    sess.target.is_like_msvc
+    match sess.target.eh_model {
+        // What every target did before `eh_model` existed.
+        EhModel::Auto => sess.target.is_like_msvc,
+        EhModel::MsvcSeh => true,
+        EhModel::Itanium => false,
+    }
 }
 
 /// Returns `true` if this session's target requires the new exception

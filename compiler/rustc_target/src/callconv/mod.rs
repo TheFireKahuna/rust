@@ -665,7 +665,12 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                     x86_win64::compute_abi_info(cx, self)
                 }
                 _ => {
-                    if cx.target_spec().is_like_windows {
+                    // `windows_c_abi_sysv64` targets classify `"C"` as SysV, matching
+                    // what LLVM lowers for them. `extern "system"` is pinned to Win64
+                    // in `AbiMap`, so it takes the arm above rather than this one.
+                    if cx.target_spec().is_like_windows
+                        && !cx.target_spec().windows_c_abi_sysv64
+                    {
                         x86_win64::compute_abi_info(cx, self)
                     } else {
                         x86_64::compute_abi_info(cx, self)
