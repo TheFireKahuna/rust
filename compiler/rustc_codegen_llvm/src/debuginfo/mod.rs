@@ -373,7 +373,7 @@ impl<'ll> CodegenCx<'ll, '_> {
         // For MSVC, omit the column number.
         // Otherwise, emit it. This mimics clang behaviour.
         // See discussion in https://github.com/rust-lang/rust/issues/42921
-        if self.sess().target.is_like_msvc {
+        if self.sess().target.uses_pdb_debuginfo() {
             DebugLoc { file, line, col: UNKNOWN_COLUMN_NUMBER }
         } else {
             DebugLoc { file, line, col }
@@ -549,7 +549,7 @@ impl<'ll, 'tcx> DebugInfoCodegenMethods<'tcx> for CodegenCx<'ll, 'tcx> {
             });
 
             // Arguments types
-            if cx.sess().target.is_like_msvc {
+            if cx.sess().target.uses_pdb_debuginfo() {
                 // FIXME(#42800):
                 // There is a bug in MSDIA that leads to a crash when it encounters
                 // a fixed-size array of `u8` or something zero-sized in a
@@ -680,7 +680,7 @@ impl<'ll, 'tcx> DebugInfoCodegenMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         // attributed to any line in the source. That's also exactly what dummy
         // spans are. Make that equivalence here, rather than passing dummy spans
         // to lookup_debug_loc, which will return line 1 for them.
-        let (line, col) = if span.is_dummy() && !self.sess().target.is_like_msvc {
+        let (line, col) = if span.is_dummy() && !self.sess().target.uses_pdb_debuginfo() {
             (0, 0)
         } else {
             let DebugLoc { line, col, .. } = self.lookup_debug_loc(span.lo());

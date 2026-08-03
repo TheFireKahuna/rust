@@ -42,11 +42,17 @@ pub(crate) fn opts() -> TargetOptions {
         has_thread_local: true,
         pre_link_args,
 
-        // The whole point of the target: keep the MSVC linker, CodeView and
-        // the MSVC link-argument dialect (`is_like_msvc` stays set, inherited
-        // from `base::msvc`), but emit Itanium landing pads dispatched through
-        // our own `eh_personality` rather than MSVC funclets bound to
-        // `__CxxFrameHandler3`, which no NT-only image can resolve.
+        // We take the COFF/lld-link/CodeView half of `base::msvc` and none of
+        // its toolchain identity: there is no MSVC runtime, no MSVC C++ ABI and
+        // no vcruntime here. Everything that genuinely needs "the MSVC linker
+        // dialect" or "CodeView" is keyed on `linker_flavor` and
+        // `uses_pdb_debuginfo()` respectively, so clearing this costs nothing
+        // and keeps `is_like_msvc` meaning what its name says.
+        is_like_msvc: false,
+
+        // Itanium landing pads dispatched through our own `eh_personality`,
+        // rather than MSVC funclets bound to `__CxxFrameHandler3` — a symbol no
+        // NT-only image can resolve.
         eh_model: EhModel::Itanium,
         panic_strategy: PanicStrategy::Unwind,
 

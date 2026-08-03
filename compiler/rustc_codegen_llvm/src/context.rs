@@ -363,8 +363,9 @@ pub(crate) unsafe fn create_module<'ll>(
     // Control Flow Guard is currently only supported by MSVC and LLVM on Windows.
     if sess.target.is_like_msvc
         || (sess.target.options.os == Os::Windows
-            && sess.target.options.env == Env::Gnu
-            && sess.target.options.cfg_abi == CfgAbi::Llvm)
+            && (sess.target.options.env == Env::Ntposix
+                || (sess.target.options.env == Env::Gnu
+                    && sess.target.options.cfg_abi == CfgAbi::Llvm)))
     {
         match sess.opts.cg.control_flow_guard {
             CFGuard::Disabled => {}

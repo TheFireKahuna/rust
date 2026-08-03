@@ -1093,7 +1093,7 @@ impl CrateInfo {
             }
         });
 
-        if target.is_like_msvc && embed_visualizers {
+        if target.uses_pdb_debuginfo() && embed_visualizers {
             info.natvis_debugger_visualizers =
                 collect_debugger_visualizers_transitive(tcx, DebuggerVisualizerType::Natvis);
         }

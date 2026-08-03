@@ -3099,11 +3099,16 @@ impl Target {
             matches!(self.linker_flavor, LinkerFlavor::Darwin(..)),
             "`linker_flavor` must be `darwin` if and only if `is_like_darwin` is set"
         );
-        check_eq!(
-            self.is_like_msvc,
-            matches!(self.linker_flavor, LinkerFlavor::Msvc(..)),
-            "`linker_flavor` must be `msvc` if and only if `is_like_msvc` is set"
-        );
+        // One-directional. An `is_like_msvc` target must use the MSVC linker,
+        // but the converse does not hold: a target may want the MSVC linker and
+        // its argument dialect while providing none of the MSVC toolchain, ABI
+        // or runtime. `*-pc-windows-ntposix` links with lld-link and is one.
+        if self.is_like_msvc {
+            check!(
+                matches!(self.linker_flavor, LinkerFlavor::Msvc(..)),
+                "if `is_like_msvc` is set, `linker_flavor` must be `msvc`"
+            );
+        }
         check_eq!(
             self.is_like_wasm && self.os != Os::Emscripten,
             matches!(self.linker_flavor, LinkerFlavor::WasmLld(..)),
