@@ -42,6 +42,12 @@ pub(crate) fn opts() -> TargetOptions {
         has_thread_local: true,
         pre_link_args,
 
+        // `rust-lld` in the sysroot, not the `link.exe` that `base::msvc`
+        // would otherwise have `get_linker` discover through the Visual
+        // Studio install. Nothing in this toolchain comes from MSVC.
+        linker_flavor: LinkerFlavor::Msvc(Lld::Yes),
+        linker: Some("rust-lld".into()),
+
         // We take the COFF/lld-link/CodeView half of `base::msvc` and none of
         // its toolchain identity: there is no MSVC runtime, no MSVC C++ ABI and
         // no vcruntime here. Everything that genuinely needs "the MSVC linker
