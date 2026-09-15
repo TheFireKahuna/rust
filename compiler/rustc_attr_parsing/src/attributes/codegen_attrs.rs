@@ -65,6 +65,17 @@ impl NoArgsAttributeParser for ColdParser {
     const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::Cold;
 }
 
+pub(crate) struct ReturnsTwiceParser;
+
+impl NoArgsAttributeParser for ReturnsTwiceParser {
+    const PATH: &[Symbol] = &[sym::returns_twice];
+    const ON_DUPLICATE: OnDuplicate = OnDuplicate::Warn;
+    const ALLOWED_TARGETS: AllowedTargets<'_> =
+        AllowedTargets::AllowList(&[Allow(Target::Fn), Allow(Target::ForeignFn)]);
+    const STABILITY: AttributeStability = unstable!(returns_twice);
+    const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::ReturnsTwice;
+}
+
 pub(crate) struct CoverageParser;
 
 impl SingleAttributeParser for CoverageParser {
@@ -274,6 +285,7 @@ impl AttributeParser for NakedParser {
             // FIXME(#82232, #143834): temporarily renamed to mitigate `#[align]` nameres ambiguity
             sym::rustc_align,
             sym::rustc_align_static,
+            sym::returns_twice,
             // obviously compatible with self
             sym::naked,
             // documentation

@@ -266,6 +266,7 @@ enum class LLVMRustAttributeKind {
   SanitizeMemory = 22,
   NonLazyBind = 23,
   OptimizeNone = 24,
+  ReturnsTwice = 25,
   ReadNone = 26,
   SanitizeHWAddress = 28,
   WillReturn = 29,
@@ -344,6 +345,8 @@ static Attribute::AttrKind fromRust(LLVMRustAttributeKind Kind) {
     return Attribute::NonLazyBind;
   case LLVMRustAttributeKind::OptimizeNone:
     return Attribute::OptimizeNone;
+  case LLVMRustAttributeKind::ReturnsTwice:
+    return Attribute::ReturnsTwice;
   case LLVMRustAttributeKind::ReadNone:
     return Attribute::ReadNone;
   case LLVMRustAttributeKind::SanitizeHWAddress:

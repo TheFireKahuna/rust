@@ -307,6 +307,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             AttributeKind::RegisterTool { .. } => (),
             // handled below this loop and elsewhere
             AttributeKind::Repr { .. } => (),
+            AttributeKind::ReturnsTwice => (),
             AttributeKind::RustcAbi { .. } => (),
             AttributeKind::RustcAlign { .. } => {}
             AttributeKind::RustcAllocator => (),

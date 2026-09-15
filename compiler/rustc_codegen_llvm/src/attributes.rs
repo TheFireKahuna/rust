@@ -548,6 +548,9 @@ pub(crate) fn llfn_attrs_from_instance<'ll, 'tcx>(
     if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::FFI_CONST) {
         to_add.push(MemoryEffects::None.create_attr(cx.llcx));
     }
+    if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::RETURNS_TWICE) {
+        to_add.push(AttributeKind::ReturnsTwice.create_attr(cx.llcx));
+    }
     if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NAKED) {
         // do nothing; a naked function is converted into an extern function
         // and a global assembly block. LLVM's support for naked functions is

@@ -100,6 +100,7 @@ impl AttributeKind {
             ReexportTestHarnessMain(..) => No,
             RegisterTool { .. } => No,
             Repr { .. } => No,
+            ReturnsTwice => No,
             RustcAbi { .. } => No,
             RustcAlign { .. } => No,
             RustcAllocator => No,

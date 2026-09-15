@@ -1110,6 +1110,9 @@ pub enum AttributeKind {
         first_span: Span,
     },
 
+    /// Represents `#[returns_twice]`.
+    ReturnsTwice,
+
     /// Represents `#[rustc_abi(..)]`
     RustcAbi {
         attr_span: Span,

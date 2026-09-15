@@ -691,6 +691,8 @@ declare_features! (
     (unstable, register_tool, "1.41.0", Some(66079)),
     /// Allows bounding the return type of AFIT/RPITIT.
     (unstable, return_type_notation, "1.70.0", Some(109417)),
+    /// Allows the use of `#[returns_twice]` on functions.
+    (unstable, returns_twice, "CURRENT_RUSTC_VERSION", None),
     /// Target features on riscv.
     (unstable, riscv_target_feature, "1.45.0", Some(150257)),
     /// The rtm target feature on x86.

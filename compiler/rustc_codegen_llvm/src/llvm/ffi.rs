@@ -295,6 +295,7 @@ pub(crate) enum AttributeKind {
     SanitizeMemory = 22,
     NonLazyBind = 23,
     OptimizeNone = 24,
+    ReturnsTwice = 25,
     ReadNone = 26,
     SanitizeHWAddress = 28,
     WillReturn = 29,

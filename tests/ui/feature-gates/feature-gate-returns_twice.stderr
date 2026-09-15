@@ -1,0 +1,12 @@
+error[E0658]: the `returns_twice` attribute is an experimental feature
+  --> $DIR/feature-gate-returns_twice.rs:4:7
+   |
+LL |     #[returns_twice]
+   |       ^^^^^^^^^^^^^
+   |
+   = help: add `#![feature(returns_twice)]` to the crate attributes to enable
+   = note: this compiler was built on YYYY-MM-DD; consider upgrading it if it is out of date
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0658`.

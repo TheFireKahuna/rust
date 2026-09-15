@@ -184,6 +184,7 @@ pub static BUILTIN_ATTRIBUTES: &[Symbol] = &[
 
     sym::ffi_pure,
     sym::ffi_const,
+    sym::returns_twice,
     sym::register_attribute_tool,
     sym::register_lint_tool,
     sym::register_tool,

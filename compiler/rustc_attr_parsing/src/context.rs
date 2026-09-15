@@ -292,6 +292,7 @@ attribute_parsers!(
         Single<WithoutArgs<ProcMacroAttributeParser>>,
         Single<WithoutArgs<ProcMacroParser>>,
         Single<WithoutArgs<ProfilerRuntimeParser>>,
+        Single<WithoutArgs<ReturnsTwiceParser>>,
         Single<WithoutArgs<RustcAllocatorParser>>,
         Single<WithoutArgs<RustcAllocatorZeroedParser>>,
         Single<WithoutArgs<RustcAllowIncoherentImplParser>>,
