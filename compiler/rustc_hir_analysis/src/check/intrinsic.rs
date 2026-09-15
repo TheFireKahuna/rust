@@ -641,6 +641,18 @@ pub(crate) fn check_intrinsic_type(
             )
         }
 
+        sym::experimental_nt_recovery_scope => {
+            let mut_data = Ty::new_mut_ptr(tcx, param(0));
+            let body = ty::Binder::dummy(
+                tcx.mk_fn_sig_unsafe_rust_abi([mut_data], tcx.types.unit),
+            );
+            (
+                1,
+                0,
+                vec![Ty::new_fn_ptr(tcx, body), mut_data, Ty::new_mut_ptr(tcx, tcx.types.usize)],
+                tcx.types.bool,
+            )
+        }
         sym::catch_unwind => {
             let mut_data = Ty::new_mut_ptr(tcx, param(0));
             let mut_u8 = Ty::new_mut_ptr(tcx, tcx.types.u8);

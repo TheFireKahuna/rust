@@ -249,7 +249,7 @@ impl<'ll, 'tcx> DebugInfoBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
             });
 
             // Arguments types
-            if cx.sess().target.is_like_msvc {
+            if cx.sess().target.uses_pdb_debuginfo() {
                 // FIXME(#42800):
                 // There is a bug in MSDIA that leads to a crash when it encounters
                 // a fixed-size array of `u8` or something zero-sized in a
@@ -700,7 +700,7 @@ impl<'ll> CodegenCx<'ll, '_> {
         // For MSVC, omit the column number.
         // Otherwise, emit it. This mimics clang behaviour.
         // See discussion in https://github.com/rust-lang/rust/issues/42921
-        if self.sess().target.is_like_msvc {
+        if self.sess().target.uses_pdb_debuginfo() {
             DebugLoc { file, line, col: UNKNOWN_COLUMN_NUMBER }
         } else {
             DebugLoc { file, line, col }

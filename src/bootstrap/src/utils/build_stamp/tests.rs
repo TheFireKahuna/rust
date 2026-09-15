@@ -3,6 +3,38 @@ use tempfile::TempDir;
 use crate::utils::build_stamp::BuildStamp;
 
 #[test]
+fn test_smart_stamp_observes_dirty_tree_in_dry_run() {
+    // Each bootstrap invocation has its own command cache.
+    let hash = |path: &std::path::Path| {
+        let context = crate::utils::tests::TestCtx::new();
+        let config = context.config("build").create_config();
+        let build = crate::Build::new(config);
+        let builder = crate::core::builder::Builder::new(&build);
+        assert!(builder.config.dry_run());
+        super::generate_smart_stamp_hash(&builder, path, "revision")
+    };
+    let repository = TempDir::new().unwrap();
+    let git = |args: &[&str]| {
+        assert!(std::process::Command::new("git")
+            .arg("-C").arg(repository.path()).args(args).status().unwrap().success());
+    };
+    git(&["init", "-q"]);
+    let file = repository.path().join("tracked");
+    std::fs::write(&file, "before\n").unwrap();
+    git(&["add", "tracked"]);
+    let before = hash(repository.path());
+    std::fs::write(&file, "after\n").unwrap();
+    let after = hash(repository.path());
+    assert_ne!(before, after);
+    assert_eq!(after, hash(repository.path()));
+    let untracked = repository.path().join("new.cpp");
+    std::fs::write(&untracked, "before").unwrap();
+    let new_before = hash(repository.path());
+    std::fs::write(&untracked, "after").unwrap();
+    assert_ne!(new_before, hash(repository.path()));
+}
+
+#[test]
 #[should_panic(expected = "prefix can not start or end with '.'")]
 fn test_with_invalid_prefix() {
     let dir = TempDir::new().unwrap();

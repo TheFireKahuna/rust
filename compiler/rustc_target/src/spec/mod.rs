@@ -1052,6 +1052,29 @@ pub type LinkArgs = BTreeMap<LinkerFlavor, Vec<StaticCow<str>>>;
 pub type LinkArgsCli = BTreeMap<LinkerFlavorCli, Vec<StaticCow<str>>>;
 
 crate::target_spec_enum! {
+    /// Which exception-handling model does the target use?
+    ///
+    /// This is deliberately separate from `is_like_msvc`. A COFF/PE target can
+    /// want the MSVC linker, CodeView debuginfo and the MSVC link-argument
+    /// dialect while still emitting Itanium-style landing pads rather than
+    /// MSVC funclets — `*-pc-windows-ntposix` is exactly that combination.
+    #[derive(Default)]
+    pub enum EhModel {
+        /// Derive the model from `is_like_msvc`, which is what every target did
+        /// before this option existed.
+        #[default]
+        Auto = "auto",
+        /// MSVC SEH: `catchpad`/`cleanuppad` funclets, `__CxxFrameHandler3`.
+        MsvcSeh = "msvc-seh",
+        /// Itanium: landing pads and an LSDA, dispatched through the target's
+        /// own `eh_personality`.
+        Itanium = "itanium",
+    }
+
+    parse_error_type = "exception handling model";
+}
+
+crate::target_spec_enum! {
     /// Which kind of debuginfo does the target use?
     ///
     /// Useful in determining whether a target supports Split DWARF (a target with
@@ -1496,6 +1519,9 @@ supported_targets! {
     ("aarch64-uwp-windows-msvc", aarch64_uwp_windows_msvc),
     ("arm64ec-pc-windows-msvc", arm64ec_pc_windows_msvc),
     ("x86_64-pc-windows-msvc", x86_64_pc_windows_msvc),
+
+    ("aarch64-pc-windows-ntposix", aarch64_pc_windows_ntposix),
+    ("x86_64-pc-windows-ntposix", x86_64_pc_windows_ntposix),
     ("x86_64-uwp-windows-msvc", x86_64_uwp_windows_msvc),
     ("x86_64-win7-windows-msvc", x86_64_win7_windows_msvc),
     ("i686-pc-windows-msvc", i686_pc_windows_msvc),
@@ -1907,6 +1933,7 @@ crate::target_spec_enum! {
         Nto70 = "nto70",
         Nto71 = "nto71",
         Nto71IoSock = "nto71_iosock",
+        Ntposix = "ntposix",
         Ohos = "ohos",
         Relibc = "relibc",
         Sgx = "sgx",
@@ -2550,6 +2577,19 @@ pub struct TargetOptions {
     /// thumb and arm interworking.
     pub has_thumb_interworking: bool,
 
+    /// Which exception-handling model is used by this target. `Auto` follows
+    /// `is_like_msvc`, which is what every target did before this existed.
+    pub eh_model: EhModel,
+
+    /// Whether the plain `"C"` ABI is SysV on this Windows target rather than
+    /// the MS x64 ABI. Only consulted on x86_64; AArch64 Windows targets are
+    /// Win64 regardless.
+    ///
+    /// A target setting this must also arrange for `extern "system"` to stay
+    /// Win64 (see `AbiMap`), since the NT boundary's ABI is externally fixed
+    /// and would otherwise silently follow `"C"`.
+    pub windows_c_abi_sysv64: bool,
+
     /// Which kind of debuginfo is used by this target?
     pub debuginfo_kind: DebuginfoKind,
     /// How to handle split debug information, if at all. Specifying `None` has
@@ -2824,6 +2864,8 @@ impl Default for TargetOptions {
             use_ctors_section: false,
             eh_frame_header: true,
             has_thumb_interworking: false,
+            eh_model: Default::default(),
+            windows_c_abi_sysv64: false,
             debuginfo_kind: Default::default(),
             split_debuginfo: Default::default(),
             // `Off` is supported by default, but targets can remove this manually, e.g. Windows.

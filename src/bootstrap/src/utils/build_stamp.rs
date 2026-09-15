@@ -165,8 +165,8 @@ pub fn librustc_stamp(
 
 /// Computes a hash representing the state of a repository/submodule and additional input.
 ///
-/// It uses `git diff` for the actual changes, and `git status` for including the untracked
-/// files in the specified directory. The additional input is also incorporated into the
+/// It uses `git diff` for tracked changes, `git status` for index state, and the
+/// contents of untracked files in the specified directory. The additional input is also incorporated into the
 /// computation of the hash.
 ///
 /// # Parameters
@@ -187,6 +187,8 @@ pub fn generate_smart_stamp_hash(
         .allow_failure()
         .arg("diff")
         .arg(".")
+        // The hash may be memoized while bootstrap plans its dry run.
+        .run_in_dry_run()
         .run_capture_stdout(builder)
         .stdout_if_ok()
         .unwrap_or_default();
@@ -198,6 +200,7 @@ pub fn generate_smart_stamp_hash(
         .arg("--porcelain")
         .arg("-z")
         .arg("--untracked-files=normal")
+        .run_in_dry_run()
         .run_capture_stdout(builder)
         .stdout_if_ok()
         .unwrap_or_default();
@@ -206,6 +209,19 @@ pub fn generate_smart_stamp_hash(
 
     hasher.update(diff);
     hasher.update(status);
+    let untracked = helpers::git(Some(dir))
+        .allow_failure()
+        .args(["ls-files", "--others", "--exclude-standard", "-z", "."])
+        .run_in_dry_run()
+        .run_capture_stdout(builder)
+        .stdout_if_ok()
+        .unwrap_or_default();
+    for name in untracked.split('\0').filter(|name| !name.is_empty()) {
+        hasher.update(name);
+        let contents = t!(fs::read(dir.join(name)));
+        hasher.update((contents.len() as u64).to_le_bytes());
+        hasher.update(contents);
+    }
     hasher.update(additional_input);
 
     hex_encode(hasher.finalize().as_slice())

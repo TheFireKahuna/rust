@@ -10,6 +10,11 @@ use crate::spec::{Arch, Target};
 pub struct AbiMap {
     arch: ArchKind,
     os: OsKind,
+    /// Whether plain `"C"` is SysV rather than the MS x64 ABI on this Windows
+    /// target. When set, `extern "system"` must be pinned to Win64 explicitly:
+    /// the NT boundary's ABI is externally fixed and would otherwise follow
+    /// `"C"` into SysV.
+    windows_c_abi_sysv64: bool,
 }
 
 /// result from trying to map an ABI
@@ -77,12 +82,12 @@ impl AbiMap {
             OsKind::Other
         };
 
-        AbiMap { arch, os }
+        AbiMap { arch, os, windows_c_abi_sysv64: target.windows_c_abi_sysv64 }
     }
 
     /// lower an [ExternAbi] to a [CanonAbi] if this AbiMap allows
     pub fn canonize_abi(&self, extern_abi: ExternAbi, has_c_varargs: bool) -> AbiMapping {
-        let AbiMap { os, arch } = *self;
+        let AbiMap { os, arch, windows_c_abi_sysv64 } = *self;
 
         if extern_abi == ExternAbi::Swift {
             // Per https://www.swift.org/blog/abi-stability-and-more/, Swift's ABI
@@ -116,6 +121,15 @@ impl AbiMap {
             (ExternAbi::System { .. }, ArchKind::Arm(..)) if self.os == OsKind::VEXos => {
                 // Calls to VEXos APIs do not use VFP registers.
                 CanonAbi::Arm(ArmCall::Aapcs)
+            }
+            // On a Windows target whose `"C"` is SysV, `extern "system"` must
+            // stay MS x64: it names the externally-fixed kernel/loader boundary,
+            // and falling through to `CanonAbi::C` below would silently make
+            // every such call SysV.
+            (ExternAbi::System { .. }, ArchKind::X86_64)
+                if os == OsKind::Windows && windows_c_abi_sysv64 =>
+            {
+                CanonAbi::X86(X86Call::Win64)
             }
             (ExternAbi::System { .. }, _) => CanonAbi::C,
 

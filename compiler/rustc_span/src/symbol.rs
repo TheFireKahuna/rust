@@ -933,6 +933,7 @@ symbols! {
         expand2,
         expect,
         expected,
+        experimental_nt_recovery_scope,
         explicit_extern_abis,
         explicit_generic_args_with_impl_trait,
         explicit_tail_calls,

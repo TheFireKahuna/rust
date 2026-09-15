@@ -180,6 +180,10 @@ pub enum IntrinsicResult<'tcx, V> {
     /// default bodies in case an intrinsic is not implemented by the backend.
     Fallback(ty::Instance<'tcx>),
 
+    /// Call a backend-generated function with the intrinsic's signature using
+    /// the ordinary call path, including the MIR caller's unwind destination.
+    Function(V),
+
     /// Arguably this shouldn't exist, per MCP#620, but a bunch do it.
     Err(ErrorGuaranteed),
 }

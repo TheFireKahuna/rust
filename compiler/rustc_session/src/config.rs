@@ -1577,7 +1577,7 @@ impl UnstableOptions {
 
     pub fn src_hash_algorithm(&self, target: &Target) -> SourceFileHashAlgorithm {
         self.src_hash_algorithm.unwrap_or_else(|| {
-            if target.is_like_msvc {
+            if target.uses_pdb_debuginfo() {
                 SourceFileHashAlgorithm::Sha256
             } else {
                 SourceFileHashAlgorithm::Md5

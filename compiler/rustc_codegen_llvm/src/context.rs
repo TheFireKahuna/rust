@@ -139,6 +139,7 @@ pub(crate) struct FullCx<'ll, 'tcx> {
 
     eh_personality: Cell<Option<&'ll Value>>,
     pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
+    pub nt_recovery_scope_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
 
     intrinsics:
         RefCell<FxHashMap<(Cow<'static, str>, SmallVec<[&'ll Type; 2]>), (&'ll Type, &'ll Value)>>,
@@ -380,8 +381,9 @@ pub(crate) unsafe fn create_module<'ll>(
     // Control Flow Guard is currently only supported by MSVC and LLVM on Windows.
     if sess.target.is_like_msvc
         || (sess.target.options.os == Os::Windows
-            && sess.target.options.env == Env::Gnu
-            && sess.target.options.cfg_abi == CfgAbi::Llvm)
+            && (sess.target.options.env == Env::Ntposix
+                || (sess.target.options.env == Env::Gnu
+                    && sess.target.options.cfg_abi == CfgAbi::Llvm)))
     {
         match sess.opts.cg.control_flow_guard {
             CFGuard::Disabled => {}
@@ -725,6 +727,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
                 sanitizer_ignorelist,
                 eh_personality: Cell::new(None),
                 rust_try_fn: Cell::new(None),
+                nt_recovery_scope_fn: Cell::new(None),
                 intrinsics: Default::default(),
                 local_gen_sym_counter: Cell::new(0),
                 global_gen_sym_counter: Cell::new(0),

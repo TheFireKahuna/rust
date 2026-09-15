@@ -832,5 +832,5 @@ fn pop_arg_separator(output: &mut String) {
 
 /// Check if we should generate C++ like names and debug information.
 pub fn cpp_like_debuginfo(tcx: TyCtxt<'_>) -> bool {
-    tcx.sess.target.is_like_msvc
+    tcx.sess.target.uses_pdb_debuginfo()
 }

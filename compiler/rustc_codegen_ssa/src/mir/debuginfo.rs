@@ -487,7 +487,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         // Creating extra allocas on the stack makes the resulting debug info simple enough
         // that LLVM can generate correct CodeView records and thus the values appear in the
         // debugger. (#83709)
-        let should_create_individual_allocas = bx.cx().sess().target.is_like_msvc
+        let should_create_individual_allocas = bx.cx().sess().target.uses_pdb_debuginfo()
             && self.mir.local_kind(local) == mir::LocalKind::Arg
             // LLVM can handle simple things but anything more complex than just a direct
             // offset or one indirect offset of 0 is too complex for it to generate CV records
@@ -560,7 +560,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
     )> {
         let full_debug_info = self.cx.sess().opts.debuginfo == DebugInfo::Full;
 
-        let target_is_msvc = self.cx.sess().target.is_like_msvc;
+        let target_uses_pdb = self.cx.sess().target.uses_pdb_debuginfo();
 
         if !full_debug_info && self.cx.sess().fewer_names() {
             return None;
@@ -594,7 +594,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     && place.projection.is_empty()
                 {
                     let arg_index = arg_index as usize;
-                    if target_is_msvc {
+                    if target_uses_pdb {
                         // ScalarPair parameters are spilled to the stack so they need to
                         // be marked as a `LocalVariable` for MSVC debuggers to visualize
                         // their data correctly. (See #81894 & #88625)

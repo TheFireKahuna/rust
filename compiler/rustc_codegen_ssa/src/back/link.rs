@@ -1984,7 +1984,7 @@ fn print_native_static_libs(
                 | NativeLibKind::Dylib { .. }
                 | NativeLibKind::Unspecified => {
                     let verbatim = lib.verbatim;
-                    if sess.target.is_like_msvc {
+                    if matches!(sess.target.linker_flavor, LinkerFlavor::Msvc(..)) {
                         let (prefix, suffix) = sess.staticlib_components(verbatim);
                         Some(format!("{prefix}{name}{suffix}"))
                     } else if sess.target.linker_flavor.is_gnu() {
@@ -2015,7 +2015,7 @@ fn print_native_static_libs(
         let parent = path.parent();
         if let Some(dir) = parent {
             let dir = fix_windows_verbatim_for_gcc(dir);
-            if sess.target.is_like_msvc {
+            if matches!(sess.target.linker_flavor, LinkerFlavor::Msvc(..)) {
                 let mut arg = String::from("/LIBPATH:");
                 arg.push_str(&dir.display().to_string());
                 lib_args.push(arg);
@@ -2034,7 +2034,7 @@ fn print_native_static_libs(
             stem
         };
         let path = parent.unwrap_or_else(|| Path::new(""));
-        if sess.target.is_like_msvc {
+        if matches!(sess.target.linker_flavor, LinkerFlavor::Msvc(..)) {
             // When producing a dll, the MSVC linker may not actually emit a
             // `foo.lib` file if the dll doesn't actually export any symbols, so we
             // check to see if the file is there and just omit linking to it if it's
@@ -2127,7 +2127,7 @@ fn exec_linker(
                 // - all linkers targeting MSVC-like targets, including LLD
                 // - all LLD flavors running on Windows hosts
                 // С/С++ compilers use Posix-style escaping (except clang-cl, which we do not use).
-                is_like_msvc: sess.target.is_like_msvc
+                is_like_msvc: matches!(sess.target.linker_flavor, LinkerFlavor::Msvc(..))
                     || (cfg!(windows) && flavor.uses_lld() && !flavor.uses_cc()),
             }
             .to_string(),
@@ -2135,7 +2135,7 @@ fn exec_linker(
         args.push('\n');
     }
     let file = tmpdir.join("linker-arguments");
-    let bytes = if sess.target.is_like_msvc {
+    let bytes = if matches!(sess.target.linker_flavor, LinkerFlavor::Msvc(..)) {
         let mut out = Vec::with_capacity((1 + args.len()) * 2);
         // start the stream with a UTF-16 BOM
         for c in std::iter::once(0xFEFF).chain(args.encode_utf16()) {
