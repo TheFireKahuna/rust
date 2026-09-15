@@ -2486,7 +2486,7 @@ fn add_linked_symbol_object(
     linked_symbols: &[(String, SymbolExportKind)],
     exported_symbols: &[SymbolExport],
 ) {
-    let should_export_symbols = sess.target.is_like_msvc
+    let should_export_symbols = matches!(sess.target.linker_flavor, LinkerFlavor::Msvc(..))
         && !exported_symbols.is_empty()
         && (crate_type != CrateType::Executable
             || sess.opts.unstable_opts.export_executable_symbols);
