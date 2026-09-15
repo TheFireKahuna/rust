@@ -338,7 +338,7 @@ fn prefix_and_suffix<'tcx>(
                         writeln!(begin, ".section .text${asm_name},\"xr\",one_only,{asm_name}")
                             .unwrap();
                     }
-                    Env::Msvc => {
+                    Env::Msvc | Env::Ntposix => {
                         writeln!(begin, ".section .text,\"xr\",one_only,{asm_name}").unwrap();
                     }
                     Env::Unspecified => match &tcx.sess.target.options.os {

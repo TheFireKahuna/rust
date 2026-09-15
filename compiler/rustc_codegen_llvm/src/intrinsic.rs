@@ -29,7 +29,7 @@ use rustc_symbol_mangling::{
     mangle_internal_symbol, mangle_offload_export, symbol_name_for_instance_in_crate,
 };
 use rustc_target::callconv::PassMode;
-use rustc_target::spec::Arch;
+use rustc_target::spec::{Arch, Os};
 use tracing::debug;
 
 use crate::abi::FnAbiLlvmExt;

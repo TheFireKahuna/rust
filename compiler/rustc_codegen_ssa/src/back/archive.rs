@@ -136,7 +136,7 @@ pub trait ArchiveBuilderBuilder {
                 lib_name,
                 &exports,
                 machine,
-                common::is_mingw_gnu_toolchain(&sess.target),
+                common::is_using_dlltool(&sess.target),
                 // Enable compatibility with MSVC's `/WHOLEARCHIVE` flag.
                 // Without this flag a duplicate symbol error would be emitted
                 // when linking a rust staticlib using `/WHOLEARCHIVE`.

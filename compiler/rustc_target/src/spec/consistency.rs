@@ -79,11 +79,13 @@ impl Target {
             matches!(self.linker_flavor, LinkerFlavor::Darwin(..)),
             "`linker_flavor` must be `darwin` if and only if `is_like_darwin` is set"
         );
-        check_eq!(
-            self.is_like_msvc,
-            matches!(self.linker_flavor, LinkerFlavor::Msvc(..)),
-            "`linker_flavor` must be `msvc` if and only if `is_like_msvc` is set"
-        );
+        // An MSVC linker can serve a target with its own ABI and runtime.
+        if self.is_like_msvc {
+            check!(
+                matches!(self.linker_flavor, LinkerFlavor::Msvc(..)),
+                "if `is_like_msvc` is set, `linker_flavor` must be `msvc`"
+            );
+        }
         check_eq!(
             self.is_like_wasm && self.os != Os::Emscripten,
             matches!(self.linker_flavor, LinkerFlavor::WasmLld(..)),

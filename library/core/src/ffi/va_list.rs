@@ -99,7 +99,7 @@ crate::cfg_select! {
             reg_save_area: *const c_void,
         }
     }
-    all(target_arch = "x86_64", not(target_os = "uefi"), not(windows)) => {
+    all(target_arch = "x86_64", not(target_os = "uefi"), any(not(windows), target_env = "ntposix")) => {
         /// x86_64 System V ABI implementation of a `va_list`.
         ///
         /// See the [System V AMD64 ABI] for more details.
