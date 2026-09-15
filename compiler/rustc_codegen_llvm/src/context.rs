@@ -139,7 +139,6 @@ pub(crate) struct FullCx<'ll, 'tcx> {
 
     eh_personality: Cell<Option<&'ll Value>>,
     pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
-    pub nt_recovery_scope_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
 
     intrinsics:
         RefCell<FxHashMap<(Cow<'static, str>, SmallVec<[&'ll Type; 2]>), (&'ll Type, &'ll Value)>>,
@@ -727,7 +726,6 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
                 sanitizer_ignorelist,
                 eh_personality: Cell::new(None),
                 rust_try_fn: Cell::new(None),
-                nt_recovery_scope_fn: Cell::new(None),
                 intrinsics: Default::default(),
                 local_gen_sym_counter: Cell::new(0),
                 global_gen_sym_counter: Cell::new(0),

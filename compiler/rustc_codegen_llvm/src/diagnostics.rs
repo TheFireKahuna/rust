@@ -7,13 +7,6 @@ use rustc_macros::Diagnostic;
 use rustc_span::Span;
 
 #[derive(Diagnostic)]
-#[diag("experimental NT recovery requires Windows x86-64 or native AArch64")]
-pub(crate) struct NtRecoveryTarget {
-    #[primary_span]
-    pub span: Span,
-}
-
-#[derive(Diagnostic)]
 #[diag("symbol `{$symbol_name}` is already defined")]
 pub(crate) struct SymbolAlreadyDefined<'a> {
     #[primary_span]

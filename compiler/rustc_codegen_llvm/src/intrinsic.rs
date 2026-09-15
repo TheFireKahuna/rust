@@ -29,7 +29,7 @@ use rustc_symbol_mangling::{
     mangle_internal_symbol, mangle_offload_export, symbol_name_for_instance_in_crate,
 };
 use rustc_target::callconv::PassMode;
-use rustc_target::spec::{Arch, Os};
+use rustc_target::spec::Arch;
 use tracing::debug;
 
 use crate::abi::FnAbiLlvmExt;
@@ -40,7 +40,7 @@ use crate::context::CodegenCx;
 use crate::declare::declare_raw_fn;
 use crate::diagnostics::{
     AutoDiffWithoutEnable, AutoDiffWithoutLto, IntrinsicSignatureMismatch, IntrinsicWrongArch,
-    NtRecoveryTarget, OffloadWithoutEnable, OffloadWithoutFatLTO, UnknownIntrinsic,
+    OffloadWithoutEnable, OffloadWithoutFatLTO, UnknownIntrinsic,
 };
 use crate::intrinsic::ty::typetree::fnc_typetrees;
 use crate::llvm::{self, Attribute, AttributePlace, Type, Value};
@@ -291,9 +291,6 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                     }
                     _ => span_bug!(span, "Incompatible OperandValue for select_unpredictable"),
                 }
-            }
-            sym::experimental_nt_recovery_scope => {
-                return IntrinsicResult::Function(nt_recovery_scope_fn(self.cx, span).1);
             }
             sym::catch_unwind => catch_unwind_intrinsic(
                 self,
@@ -1347,57 +1344,6 @@ fn intrinsic_fn<'ll, 'tcx>(
     }
 
     llfn
-}
-
-fn nt_recovery_scope_fn<'a, 'll, 'tcx>(
-    cx: &'a CodegenCx<'ll, 'tcx>,
-    span: Span,
-) -> (&'ll Type, &'ll Value) {
-    if cx.sess().target.os != Os::Windows
-        || !matches!(cx.sess().target.arch, Arch::X86_64 | Arch::AArch64)
-    {
-        cx.tcx.dcx().emit_fatal(NtRecoveryTarget { span });
-    }
-    if let Some(function) = cx.nt_recovery_scope_fn.get() {
-        return function;
-    }
-    let tcx = cx.tcx;
-    let data = Ty::new_mut_ptr(tcx, tcx.types.u8);
-    let body = Ty::new_fn_ptr(
-        tcx,
-        ty::Binder::dummy(tcx.mk_fn_sig_unsafe_rust_abi([data], tcx.types.unit)),
-    );
-    let signature = ty::Binder::dummy(tcx.mk_fn_sig_unsafe_rust_abi(
-        [body, data, Ty::new_mut_ptr(tcx, tcx.types.usize)],
-        tcx.types.bool,
-    ));
-    let function = gen_fn(cx, "__rust_nt_recovery_scope", signature, &mut |mut bx| {
-        let body = llvm::get_param(bx.llfn(), 0);
-        let data = llvm::get_param(bx.llfn(), 1);
-        let buffer = llvm::get_param(bx.llfn(), 2);
-        let initial = bx.append_sibling_block("initial");
-        let recovery = bx.append_sibling_block("recovery");
-        let frame = bx.call_intrinsic("llvm.frameaddress", &[bx.type_ptr()], &[bx.const_i32(0)]);
-        bx.store(frame, buffer, cx.tcx.data_layout.pointer_align().abi);
-        let (capture_type, capture) =
-            cx.get_intrinsic("llvm.experimental.nt.recovery.scope".into(), &[]);
-        bx.callbr(capture_type, None, None, capture, &[buffer], initial, &[recovery], None, None);
-        bx.switch_to_block(initial);
-        let body_type = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        let call = bx.call(body_type, None, None, body, &[data], None, None);
-        // The body's cleanup must remain below the selected target activation.
-        let noinline = llvm::AttributeKind::NoInline.create_attr(cx.llcx);
-        crate::attributes::apply_to_callsite(call, llvm::AttributePlace::Function, &[noinline]);
-        bx.ret(bx.const_bool(false));
-        bx.switch_to_block(recovery);
-        bx.ret(bx.const_bool(true));
-    });
-    // Target-frame cleanup must never destroy values owned by the caller.
-    // Keep the capture in its own Drop-free activation, including under LTO.
-    let noinline = llvm::AttributeKind::NoInline.create_attr(cx.llcx);
-    crate::attributes::apply_to_llfn(function.1, llvm::AttributePlace::Function, &[noinline]);
-    cx.nt_recovery_scope_fn.set(Some(function));
-    function
 }
 
 fn catch_unwind_intrinsic<'ll, 'tcx>(
