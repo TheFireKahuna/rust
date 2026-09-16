@@ -970,6 +970,7 @@ symbols! {
         fadd_fast,
         fake_variadic,
         fallback,
+        fault_scope_begin,
         fdiv_algebraic,
         fdiv_fast,
         feature,

@@ -605,7 +605,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
 
                 self.schedule_drop_for_binding(var, irrefutable_pat.span, OutsideGuard);
-                block.unit()
+                self.flush_fault_scope(block, irrefutable_pat.span).unit()
             }
 
             _ => {
@@ -2514,7 +2514,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 by_value_bindings,
             );
 
-            guard_true_block
+            self.flush_fault_scope(guard_true_block, scrutinee_span)
         } else {
             // (Here, it is not too early to bind the matched
             // candidate on `block`, because there is no guard result
@@ -2524,7 +2524,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 schedule_drops,
                 sub_branch.bindings.iter(),
             );
-            block
+            self.flush_fault_scope(block, scrutinee_span)
         }
     }
 

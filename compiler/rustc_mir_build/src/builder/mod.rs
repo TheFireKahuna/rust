@@ -216,6 +216,12 @@ struct Builder<'a, 'tcx> {
     upvars: CaptureMap<'tcx>,
     unit_temp: Option<Place<'tcx>>,
 
+    /// Whether this body marks its fault scopes: `-Zprecise-fault-scopes`, and
+    /// not a const context, whose evaluation cannot call the marker.
+    fault_scopes: bool,
+    /// A droppable local was scheduled since the last marker.
+    fault_scope_pending: bool,
+
     var_debug_info: Vec<VarDebugInfo<'tcx>>,
 
     // A cache for `maybe_lint_level_roots_bounded`. That function is called
@@ -809,6 +815,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             upvars: CaptureMap::new(),
             var_indices: Default::default(),
             unit_temp: None,
+            fault_scopes: tcx.sess.opts.unstable_opts.precise_fault_scopes
+                && tcx.hir_body_const_context(def).is_none(),
+            fault_scope_pending: false,
             var_debug_info: vec![],
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
@@ -1039,6 +1048,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         if let Some(source_scope) = scope {
             self.source_scope = source_scope;
         }
+        block = self.flush_fault_scope(block, expr_span);
 
         if self.tcx.intrinsic(self.def_id).is_some_and(|i| i.must_be_overridden)
             || self.tcx.is_sdylib_interface_build()
@@ -1089,6 +1099,42 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 tmp
             }
         }
+    }
+
+    /// Emits the pending fault-scope marker at the end of `block`: a call to
+    /// the marker lang item whose unwind edge is the cleanup for every drop
+    /// scheduled so far, which is where a fault after this point unwinds to.
+    /// Returns the block to continue in.
+    pub(crate) fn flush_fault_scope(&mut self, block: BasicBlock, span: Span) -> BasicBlock {
+        if !self.fault_scope_pending {
+            return block;
+        }
+        self.fault_scope_pending = false;
+        let source_info = self.source_info(span);
+        let func = Operand::function_handle(
+            self.tcx,
+            self.tcx
+                .require_lang_item(rustc_hir::attrs::lang_items::LangItem::FaultScopeBegin, span),
+            &[],
+            span,
+        );
+        let destination = self.get_unit_temp();
+        let next = self.cfg.start_new_block();
+        self.cfg.terminate(
+            block,
+            source_info,
+            TerminatorKind::Call {
+                func,
+                args: [].into(),
+                destination,
+                target: Some(next),
+                unwind: UnwindAction::Continue,
+                call_source: CallSource::Misc,
+                fn_span: span,
+            },
+        );
+        self.diverge_from(block);
+        next
     }
 }
 

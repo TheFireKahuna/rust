@@ -2759,6 +2759,9 @@ options! {
         "a single extra argument to prepend the linker invocation (can be used several times)"),
     pre_link_args: Vec<String> = (Vec::new(), parse_list, [UNTRACKED],
         "extra arguments to prepend to the linker invocation (space separated)"),
+    precise_fault_scopes: bool = (false, parse_bool, [TRACKED],
+        "mark, at every point a droppable local is scheduled, the cleanup a hardware fault in \
+        the frame unwinds to, so the fault runs exactly the live drops (default: no)"),
     precise_enum_drop_elaboration: bool = (true, parse_bool, [TRACKED],
         "use a more precise version of drop elaboration for matches on enums (default: yes). \
         This results in better codegen, but has caused miscompilations on some tier 2 platforms. \

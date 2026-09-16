@@ -2832,6 +2832,16 @@ pub const fn contract_check_ensures<C: Fn(&Ret) -> bool + Copy, Ret>(
 #[rustc_intrinsic]
 pub unsafe fn vtable_size(ptr: *const ()) -> usize;
 
+/// Marks the point from which a hardware fault in this frame unwinds to the
+/// cleanup for the droppable locals scheduled so far. MIR building inserts a
+/// call, whose unwind edge names that cleanup, wherever a droppable local is
+/// scheduled under `-Zprecise-fault-scopes`; the call itself does nothing and
+/// emits no code.
+#[unstable(feature = "core_intrinsics", issue = "none")]
+#[lang = "fault_scope_begin"]
+#[rustc_intrinsic]
+pub fn fault_scope_begin() {}
+
 /// The intrinsic will return the alignment stored in that vtable.
 ///
 /// # Safety

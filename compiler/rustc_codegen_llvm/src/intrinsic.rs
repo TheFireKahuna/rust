@@ -299,6 +299,17 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 args[2].immediate(),
             ),
             sym::breakpoint => self.call_intrinsic("llvm.debugtrap", &[], &[]),
+            sym::fault_scope_begin => {
+                // The MIR call's unwind edge is the cleanup a fault reaches; the
+                // backend's call-site table carries it, so the marker goes
+                // through the ordinary call path. Funclet and wasm models have
+                // no such table and the marker is nothing there.
+                if wants_msvc_seh(&tcx.sess.target) || wants_wasm_eh(&tcx.sess.target) {
+                    return IntrinsicResult::Operand(OperandValue::ZeroSized);
+                }
+                let (_, function) = self.cx.get_intrinsic("llvm.seh.scope.begin".into(), &[]);
+                return IntrinsicResult::Function(function);
+            }
             sym::va_arg => {
                 let target = &self.cx.tcx.sess.target;
                 let stability = target.supports_c_variadic_definitions();

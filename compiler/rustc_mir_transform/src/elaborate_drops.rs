@@ -82,6 +82,8 @@ impl<'tcx> crate::MirPass<'tcx> for ElaborateDrops {
                 init_data: InitializationData { inits, uninits },
                 drop_flags,
                 patch: MirPatch::new(body),
+                fault_scopes: tcx.sess.opts.unstable_opts.precise_fault_scopes,
+                in_cleanup: false,
             }
             .elaborate()
         };
@@ -136,6 +138,17 @@ impl InitializationData<'_, '_> {
     }
 }
 
+impl ElaborateDropsCtxt<'_, '_> {
+    /// The initialization state a drop is elaborated for: the analysis's, or
+    /// "either" for a drop on an unwind path a fault may reach from anywhere.
+    fn state_of(&self, path: MovePathIndex) -> (bool, bool) {
+        if self.fault_scopes && self.in_cleanup {
+            return (true, true);
+        }
+        self.init_data.maybe_init_uninit(path)
+    }
+}
+
 impl<'a, 'tcx> DropElaborator<'a, 'tcx> for ElaborateDropsCtxt<'a, 'tcx> {
     type Path = MovePathIndex;
 
@@ -166,13 +179,13 @@ impl<'a, 'tcx> DropElaborator<'a, 'tcx> for ElaborateDropsCtxt<'a, 'tcx> {
     #[instrument(level = "debug", skip(self), ret)]
     fn drop_style(&self, path: Self::Path, mode: DropFlagMode) -> DropStyle {
         let ((maybe_init, maybe_uninit), multipart) = match mode {
-            DropFlagMode::Shallow => (self.init_data.maybe_init_uninit(path), false),
+            DropFlagMode::Shallow => (self.state_of(path), false),
             DropFlagMode::Deep => {
                 let mut some_maybe_init = false;
                 let mut some_maybe_uninit = false;
                 let mut children_count = 0;
                 on_all_children_bits(self.move_data(), path, |child| {
-                    let (maybe_init, maybe_uninit) = self.init_data.maybe_init_uninit(child);
+                    let (maybe_init, maybe_uninit) = self.state_of(child);
                     debug!("elaborate_drop: state({:?}) = {:?}", child, (maybe_init, maybe_uninit));
                     some_maybe_init |= maybe_init;
                     some_maybe_uninit |= maybe_uninit;
@@ -251,6 +264,13 @@ struct ElaborateDropsCtxt<'a, 'tcx> {
     init_data: InitializationData<'a, 'tcx>,
     drop_flags: IndexVec<MovePathIndex, Option<Local>>,
     patch: MirPatch<'tcx>,
+    /// Under `-Zprecise-fault-scopes` a cleanup is reached from every point
+    /// after the marker naming it, not only from the edges this MIR has, so a
+    /// drop on an unwind path is always flagged: the flag, kept at every
+    /// initialization and move, is what makes the cleanup right everywhere.
+    fault_scopes: bool,
+    /// The drop being elaborated is in a cleanup block.
+    in_cleanup: bool,
 }
 
 impl fmt::Debug for ElaborateDropsCtxt<'_, '_> {
@@ -300,8 +320,9 @@ impl<'a, 'tcx> ElaborateDropsCtxt<'a, 'tcx> {
             match path {
                 LookupResult::Exact(path) => {
                     self.init_data.seek_before(self.body.terminator_loc(bb));
+                    self.in_cleanup = data.is_cleanup;
                     on_all_children_bits(self.move_data(), path, |child| {
-                        let (maybe_init, maybe_uninit) = self.init_data.maybe_init_uninit(child);
+                        let (maybe_init, maybe_uninit) = self.state_of(child);
                         debug!(
                             "collect_drop_flags: collecting {:?} from {:?}@{:?} - {:?}",
                             child,
@@ -376,6 +397,7 @@ impl<'a, 'tcx> ElaborateDropsCtxt<'a, 'tcx> {
                         }
                     };
                     self.init_data.seek_before(self.body.terminator_loc(bb));
+                    self.in_cleanup = data.is_cleanup;
                     elaborate_drop(
                         self,
                         terminator.source_info,

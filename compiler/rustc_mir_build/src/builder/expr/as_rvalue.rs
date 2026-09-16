@@ -728,6 +728,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         if let Some(temp_lifetime) = temp_lifetime {
             this.schedule_drop_storage(upvar_span, temp_lifetime, temp);
             this.schedule_drop_value(upvar_span, temp_lifetime, temp);
+            block = this.flush_fault_scope(block, upvar_span);
         }
 
         block.and(Operand::Move(Place::from(temp)))

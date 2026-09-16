@@ -1500,6 +1500,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         if !self.local_decls[local].ty.needs_drop(self.tcx, self.typing_env()) {
             return;
         }
+        // The unwind cleanup grew: the next flush marks the point from which a
+        // fault must reach it.
+        self.fault_scope_pending |= self.fault_scopes;
         self.schedule_drop(span, region_scope, local, DropKind::Value);
     }
 

@@ -104,6 +104,7 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::exp2
         | sym::fabs
         | sym::fadd_algebraic
+        | sym::fault_scope_begin
         | sym::fdiv_algebraic
         | sym::field_offset
         | sym::field_representing_type_actual_type_id
@@ -291,7 +292,7 @@ pub(crate) fn check_intrinsic_type(
         sym::abort => (0, 0, vec![], tcx.types.never),
         sym::amdgpu_dispatch_ptr => (0, 0, vec![], Ty::new_imm_ptr(tcx, tcx.types.unit)),
         sym::unreachable => (0, 0, vec![], tcx.types.never),
-        sym::breakpoint => (0, 0, vec![], tcx.types.unit),
+        sym::breakpoint | sym::fault_scope_begin => (0, 0, vec![], tcx.types.unit),
         sym::size_of | sym::align_of | sym::variant_count => (1, 0, vec![], tcx.types.usize),
         sym::size_of_val | sym::align_of_val => {
             (1, 0, vec![Ty::new_imm_ptr(tcx, param(0))], tcx.types.usize)

@@ -118,6 +118,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         if let Some(temp_lifetime) = temp_lifetime.temp_lifetime {
             this.schedule_drop_value(expr_span, temp_lifetime, temp);
+            block = this.flush_fault_scope(block, expr_span);
         }
 
         if let Some(backwards_incompatible) = temp_lifetime.backwards_incompatible {

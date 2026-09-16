@@ -305,7 +305,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                 ScheduleDrops::Yes,
                             );
                             this.schedule_drop_for_binding(node, span, OutsideGuard);
-                        })
+                        });
+                        block = this.flush_fault_scope(block, pattern.span);
                     }
 
                     // Enter the visibility scope, after evaluating the initializer.

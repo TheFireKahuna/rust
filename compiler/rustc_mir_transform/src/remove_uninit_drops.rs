@@ -28,10 +28,16 @@ impl<'tcx> crate::MirPass<'tcx> for RemoveUninitDrops {
             .iterate_to_fixpoint(tcx, body, Some("remove_uninit_drops"))
             .into_results_cursor(body);
 
+        // Under `-Zprecise-fault-scopes` a cleanup is reached from points this
+        // MIR has no edge for, so its drops stay for elaboration to flag.
+        let keep_cleanups = tcx.sess.opts.unstable_opts.precise_fault_scopes;
         let mut to_remove = vec![];
         for (bb, block) in body.basic_blocks.iter_enumerated() {
             let terminator = block.terminator();
             let TerminatorKind::Drop { place, .. } = &terminator.kind else { continue };
+            if keep_cleanups && block.is_cleanup {
+                continue;
+            }
 
             maybe_inits.seek_before_primary_effect(body.terminator_loc(bb));
             let MaybeReachable::Reachable(maybe_inits) = maybe_inits.get() else { continue };
