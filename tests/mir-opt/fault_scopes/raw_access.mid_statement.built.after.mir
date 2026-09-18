@@ -1,0 +1,45 @@
+// MIR for `mid_statement` after built
+
+fn mid_statement(_1: *const u32, _2: Guard) -> Pair {
+    debug p => _1;
+    debug a => _2;
+    let mut _0: Pair;
+    let mut _3: Guard;
+    let mut _4: u32;
+    let mut _5: *const u32;
+
+    bb0: {
+        StorageLive(_3);
+        _3 = move _2;
+        StorageLive(_4);
+        _5 = &raw const (*_1);
+        _4 = read_via_copy::<u32>(move _5) -> [return: bb1, unwind: bb4];
+    }
+
+    bb1: {
+        _0 = Pair { a: move _3, b: move _4 };
+        StorageDead(_4);
+        drop(_3) -> [return: bb2, unwind: bb5];
+    }
+
+    bb2: {
+        StorageDead(_3);
+        drop(_2) -> [return: bb3, unwind: bb6];
+    }
+
+    bb3: {
+        return;
+    }
+
+    bb4 (cleanup): {
+        drop(_3) -> [return: bb5, unwind terminate(cleanup)];
+    }
+
+    bb5 (cleanup): {
+        drop(_2) -> [return: bb6, unwind terminate(cleanup)];
+    }
+
+    bb6 (cleanup): {
+        resume;
+    }
+}

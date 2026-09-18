@@ -1500,9 +1500,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         if !self.local_decls[local].ty.needs_drop(self.tcx, self.typing_env()) {
             return;
         }
-        // The unwind cleanup grew: the next flush marks the point from which a
-        // fault must reach it.
-        self.fault_scope_pending |= self.fault_scopes;
         self.schedule_drop(span, region_scope, local, DropKind::Value);
     }
 
@@ -1712,7 +1709,17 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         // create the new block for the assignment
         let assign = self.cfg.start_new_block();
-        self.cfg.push_assign(assign, source_info, place, value.clone());
+        let assigned = if self.place_derefs_raw(place) {
+            // The store through the pointer is the access that faults. The
+            // reassignment on the unwind path below is inside a cleanup, where
+            // a fault is fatal, so it stays a statement.
+            let temp = self.temp(place.ty(&self.local_decls, self.tcx).ty, span);
+            self.cfg.push_assign(assign, source_info, temp, value.clone());
+            self.fault_write(assign, source_info, place, Operand::Move(temp))
+        } else {
+            self.cfg.push_assign(assign, source_info, place, value.clone());
+            assign
+        };
 
         // create the new block for the assignment in the case of unwinding
         let assign_unwind = self.cfg.start_new_cleanup_block();
@@ -1731,7 +1738,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         );
         self.diverge_from(block);
 
-        assign.unit()
+        assigned.unit()
     }
 
     /// Creates an `Assert` terminator and return the success block.

@@ -1,0 +1,31 @@
+// MIR for `compound` after built
+
+fn compound(_1: *mut u32) -> () {
+    debug p => _1;
+    let mut _0: ();
+    let mut _2: u32;
+    let mut _3: *const u32;
+    let mut _4: u32;
+    let mut _5: *mut u32;
+    let mut _6: ();
+
+    bb0: {
+        _3 = &raw const (*_1);
+        _2 = read_via_copy::<u32>(move _3) -> [return: bb1, unwind: bb3];
+    }
+
+    bb1: {
+        _4 = Add(copy _2, const 1_u32);
+        _5 = &raw mut (*_1);
+        _6 = write_via_move::<u32>(move _5, move _4) -> [return: bb2, unwind: bb3];
+    }
+
+    bb2: {
+        _0 = const ();
+        return;
+    }
+
+    bb3 (cleanup): {
+        resume;
+    }
+}

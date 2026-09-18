@@ -499,15 +499,6 @@ pub(crate) unsafe fn create_module<'ll>(
         llvm::add_module_flag_u32(llmod, llvm::ModuleFlagMergeBehavior::Warning, "ehcontguard", 1);
     }
 
-    // Exact fault scopes: the backend keeps every fault-scope marker's unwind
-    // edge and covers the blocks under it with call-site ranges, and keeps
-    // every other invoke's edge too, since a fault can come out of a callee
-    // proved not to throw. Only a landingpad-model target carries the table.
-    if sess.opts.unstable_opts.precise_fault_scopes && !wants_msvc_seh(&sess.target) && !wants_wasm_eh(&sess.target)
-    {
-        llvm::add_module_flag_u32(llmod, llvm::ModuleFlagMergeBehavior::Warning, "eh-asynch", 1);
-    }
-
     match sess.opts.unstable_opts.function_return {
         FunctionReturn::Keep => {}
         FunctionReturn::ThunkExtern => {

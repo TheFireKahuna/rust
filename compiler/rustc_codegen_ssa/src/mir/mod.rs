@@ -92,6 +92,10 @@ pub struct FunctionCx<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> {
     /// Cached unreachable block
     unreachable_block: Option<Bx::BasicBlock>,
 
+    /// The pad a raw-pointer access with nothing to clean up unwinds to: it
+    /// lands and resumes, so the access is covered rather than a gap.
+    fault_resume_block: Option<Bx::BasicBlock>,
+
     /// Cached terminate upon unwinding block and its reason. For non-wasm
     /// targets, there is at most one such block per function, stored at index
     /// `START_BLOCK`. For wasm targets, each funclet needs its own terminate
@@ -235,9 +239,11 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let start_llbb = Bx::append_block(cx, llfn, "start");
     let mut start_bx = Bx::build(cx, start_llbb);
 
+    let precise_fault_scopes = tcx.sess.precise_fault_scopes();
     if mir::traversal::mono_reachable(&mir, tcx, instance).any(|(bb, block)| {
         (block.is_cleanup && !nop_landing_pads.contains(bb))
             || matches!(block.terminator().unwind(), Some(mir::UnwindAction::Terminate(_)))
+            || (precise_fault_scopes && block_has_fault_access(tcx, block))
     }) {
         start_bx.set_personality_fn(cx.eh_personality());
     }
@@ -262,6 +268,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         personality_slot: None,
         cached_llbbs,
         unreachable_block: None,
+        fault_resume_block: None,
         terminate_blocks: IndexVec::from_elem(None, &mir.basic_blocks),
         cleanup_kinds,
         landing_pads: IndexVec::from_elem(None, &mir.basic_blocks),
@@ -451,6 +458,18 @@ fn optimize_use_clone<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 /// Produces, for each argument, a `Value` pointing at the
 /// argument's value. As arguments are places, these are always
 /// indirect.
+/// Whether `block` ends in a raw-pointer access that unwinds — an edge a
+/// landing pad must catch even where there is nothing to clean up.
+fn block_has_fault_access<'tcx>(tcx: TyCtxt<'tcx>, block: &mir::BasicBlockData<'tcx>) -> bool {
+    let mir::TerminatorKind::Call { func, unwind, .. } = &block.terminator().kind else {
+        return false;
+    };
+    matches!(unwind, mir::UnwindAction::Continue | mir::UnwindAction::Cleanup(_))
+        && func
+            .const_fn_def()
+            .is_some_and(|(def_id, _)| tcx.intrinsic_may_fault(def_id))
+}
+
 fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     fx: &mut FunctionCx<'a, 'tcx, Bx>,

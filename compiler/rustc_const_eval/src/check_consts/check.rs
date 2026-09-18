@@ -832,6 +832,15 @@ impl<'tcx> Visitor<'tcx> for Checker<'_, 'tcx> {
 
                 // Intrinsics are language primitives, not regular calls, so treat them separately.
                 if let Some(intrinsic) = tcx.intrinsic(callee) {
+                    // A raw-pointer access MIR building lowered to a call is the language's own
+                    // operation, whose stability is the access's; an explicit call of the
+                    // intrinsic is gated on its feature at the HIR level already.
+                    if tcx.sess.precise_fault_scopes()
+                        && (tcx.is_lang_item(callee, LangItem::ReadViaCopy)
+                            || tcx.is_lang_item(callee, LangItem::WriteViaMove))
+                    {
+                        return;
+                    }
                     if !tcx.is_const_fn(callee) {
                         // Non-const intrinsic.
                         self.check_op(ops::IntrinsicNonConst { name: intrinsic.name });

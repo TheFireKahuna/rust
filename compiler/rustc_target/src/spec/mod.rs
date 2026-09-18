@@ -2636,6 +2636,10 @@ pub struct TargetOptions {
     /// Whether the target supports XRay instrumentation.
     pub supports_xray: bool,
 
+    /// Whether every raw-pointer access is lowered as an unwind edge to the frame's cleanup, so
+    /// a hardware fault at one runs exactly the live drops. `-Zprecise-fault-scopes` overrides.
+    pub precise_fault_scopes: bool,
+
     /// The default address space for this target. When using LLVM as a backend, most targets simply
     /// use LLVM's default address space (0). Some other targets, such as CHERI targets, use a
     /// custom default address space (in this specific case, `200`).
@@ -2879,6 +2883,7 @@ impl Default for TargetOptions {
             entry_abi: CanonAbi::C,
             supports_fentry: false,
             supports_xray: false,
+            precise_fault_scopes: false,
             default_address_space: rustc_abi::AddressSpace::ZERO,
             small_data_threshold_support: SmallDataThresholdSupport::DefaultForArch,
         }

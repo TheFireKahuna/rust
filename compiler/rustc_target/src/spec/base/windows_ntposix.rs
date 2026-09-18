@@ -62,6 +62,11 @@ pub(crate) fn opts() -> TargetOptions {
         eh_model: EhModel::Itanium,
         panic_strategy: PanicStrategy::Unwind,
 
+        // A hardware fault is an unwind on this target: every raw-pointer
+        // access is an unwind edge, so a recovered fault runs exactly the
+        // live drops of the faulting frame.
+        precise_fault_scopes: true,
+
         ..base
     }
 }

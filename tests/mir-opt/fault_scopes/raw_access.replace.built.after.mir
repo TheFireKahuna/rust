@@ -1,0 +1,54 @@
+// MIR for `replace` after built
+
+fn replace(_1: *mut Guard, _2: Guard) -> () {
+    debug p => _1;
+    debug g => _2;
+    let mut _0: ();
+    let mut _3: Guard;
+    let mut _4: Guard;
+    let mut _5: *mut Guard;
+    let mut _6: ();
+
+    bb0: {
+        StorageLive(_3);
+        _3 = move _2;
+        drop((*_1)) -> [return: bb1, unwind: bb3];
+    }
+
+    bb1: {
+        _4 = move _3;
+        _5 = &raw mut (*_1);
+        _6 = write_via_move::<Guard>(move _5, move _4) -> [return: bb2, unwind: bb6];
+    }
+
+    bb2: {
+        _0 = const ();
+        drop(_3) -> [return: bb4, unwind: bb7];
+    }
+
+    bb3 (cleanup): {
+        (*_1) = move _3;
+        goto -> bb6;
+    }
+
+    bb4: {
+        StorageDead(_3);
+        drop(_2) -> [return: bb5, unwind: bb8];
+    }
+
+    bb5: {
+        return;
+    }
+
+    bb6 (cleanup): {
+        drop(_3) -> [return: bb7, unwind terminate(cleanup)];
+    }
+
+    bb7 (cleanup): {
+        drop(_2) -> [return: bb8, unwind terminate(cleanup)];
+    }
+
+    bb8 (cleanup): {
+        resume;
+    }
+}

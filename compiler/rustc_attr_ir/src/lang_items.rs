@@ -304,7 +304,9 @@ language_item_table! {
     PanicLocation,           sym::panic_location,      panic_location,             Target::Struct,         GenericRequirement::None;
     PanicImpl,               sym::panic_impl,          panic_impl,                 Target::ForeignFn,      GenericRequirement::None;
     PanicCannotUnwind,       sym::panic_cannot_unwind, panic_cannot_unwind,        Target::Fn,             GenericRequirement::Exact(0);
-    FaultScopeBegin,         sym::fault_scope_begin,   fault_scope_begin,          Target::Fn,             GenericRequirement::Exact(0);
+    /// The raw-pointer accesses MIR building emits as calls under exact fault scopes.
+    ReadViaCopy,             sym::read_via_copy,       read_via_copy_fn,           Target::Fn,             GenericRequirement::Exact(1);
+    WriteViaMove,            sym::write_via_move,      write_via_move_fn,          Target::Fn,             GenericRequirement::Exact(1);
     PanicInCleanup,          sym::panic_in_cleanup,    panic_in_cleanup,           Target::Fn,             GenericRequirement::Exact(0);
     /// Constant panic messages, used for codegen of MIR asserts.
     PanicAddOverflow,        sym::panic_const_add_overflow, panic_const_add_overflow, Target::Fn, GenericRequirement::None;

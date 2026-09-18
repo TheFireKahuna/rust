@@ -1,0 +1,2 @@
+error: incorrect value `maybe` for unstable option `precise-fault-scopes` - one of: `y`, `yes`, `on`, `true`, `n`, `no`, `off` or `false` was expected
+

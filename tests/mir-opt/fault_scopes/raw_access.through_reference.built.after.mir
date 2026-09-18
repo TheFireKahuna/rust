@@ -1,0 +1,11 @@
+// MIR for `through_reference` after built
+
+fn through_reference(_1: &u32) -> u32 {
+    debug r => _1;
+    let mut _0: u32;
+
+    bb0: {
+        _0 = copy (*_1);
+        return;
+    }
+}

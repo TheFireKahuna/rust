@@ -1276,8 +1276,13 @@ where
 #[tracing::instrument(level = "debug", skip(tcx))]
 pub fn fn_can_unwind(tcx: TyCtxt<'_>, fn_def_id: Option<DefId>, abi: ExternAbi) -> bool {
     if let Some(did) = fn_def_id {
+        // Under exact fault scopes a raw-pointer access is an unwind edge: the fault is the
+        // unwind, whatever the intrinsic's own attribute says.
+        let may_fault = tcx.sess.precise_fault_scopes() && tcx.intrinsic_may_fault(did);
+
         // Special attribute for functions which can't unwind.
-        if tcx.codegen_fn_attrs(did).flags.contains(CodegenFnAttrFlags::NEVER_UNWIND) {
+        if !may_fault && tcx.codegen_fn_attrs(did).flags.contains(CodegenFnAttrFlags::NEVER_UNWIND)
+        {
             return false;
         }
 

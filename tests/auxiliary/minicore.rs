@@ -349,13 +349,29 @@ pub trait CoerceUnsized<T: PointeeSized> {}
 impl<'a, 'b: 'a, T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<&'a U> for &'b T {}
 
 #[lang = "drop"]
-trait Drop {
+pub trait Drop {
     fn drop(&mut self);
+}
+
+#[lang = "panic_in_cleanup"]
+#[rustc_nounwind]
+pub fn panic_in_cleanup() -> ! {
+    loop {}
 }
 
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize);
+
+#[rustc_nounwind]
+#[rustc_intrinsic]
+#[lang = "read_via_copy"]
+pub const unsafe fn read_via_copy<T>(ptr: *const T) -> T;
+
+#[rustc_nounwind]
+#[rustc_intrinsic]
+#[lang = "write_via_move"]
+pub const unsafe fn write_via_move<T>(ptr: *mut T, value: T);
 
 pub mod mem {
     #[rustc_nounwind]

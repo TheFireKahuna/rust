@@ -854,6 +854,93 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         }
     }
 
+    fn fault_load(
+        &mut self,
+        ty: &'ll Type,
+        ptr: &'ll Value,
+        align: Align,
+        volatile: bool,
+        edge: Option<FaultEdge<&'ll BasicBlock>>,
+    ) -> &'ll Value {
+        let Some(edge) = edge else {
+            return if volatile { self.volatile_load(ty, ptr, align) } else { self.load(ty, ptr, align) };
+        };
+        let name = if volatile { "llvm.fault.load.volatile" } else { "llvm.fault.load" };
+        let args = [ptr, self.const_u32(align.bytes() as u32)];
+        self.fault_intrinsic(name, &[ty, self.val_ty(ptr)], &args, edge)
+    }
+
+    fn fault_store(
+        &mut self,
+        val: &'ll Value,
+        ptr: &'ll Value,
+        align: Align,
+        volatile: bool,
+        edge: Option<FaultEdge<&'ll BasicBlock>>,
+    ) {
+        let Some(edge) = edge else {
+            let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+            self.store_with_flags(val, ptr, align, flags);
+            return;
+        };
+        let name = if volatile { "llvm.fault.store.volatile" } else { "llvm.fault.store" };
+        let args = [val, ptr, self.const_u32(align.bytes() as u32)];
+        self.fault_intrinsic(name, &[self.val_ty(val), self.val_ty(ptr)], &args, edge);
+    }
+
+    fn fault_memcpy(
+        &mut self,
+        dst: &'ll Value,
+        dst_align: Align,
+        src: &'ll Value,
+        src_align: Align,
+        size: &'ll Value,
+        volatile: bool,
+        edge: Option<FaultEdge<&'ll BasicBlock>>,
+    ) {
+        let Some(edge) = edge else {
+            let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+            return self.memcpy(dst, dst_align, src, src_align, size, flags, None);
+        };
+        self.fault_mem_intrinsic("llvm.fault.memcpy", dst, dst_align, src, src_align, size, volatile, edge);
+    }
+
+    fn fault_memmove(
+        &mut self,
+        dst: &'ll Value,
+        dst_align: Align,
+        src: &'ll Value,
+        src_align: Align,
+        size: &'ll Value,
+        volatile: bool,
+        edge: Option<FaultEdge<&'ll BasicBlock>>,
+    ) {
+        let Some(edge) = edge else {
+            let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+            return self.memmove(dst, dst_align, src, src_align, size, flags);
+        };
+        self.fault_mem_intrinsic("llvm.fault.memmove", dst, dst_align, src, src_align, size, volatile, edge);
+    }
+
+    fn fault_memset(
+        &mut self,
+        dst: &'ll Value,
+        fill_byte: &'ll Value,
+        size: &'ll Value,
+        align: Align,
+        volatile: bool,
+        edge: Option<FaultEdge<&'ll BasicBlock>>,
+    ) {
+        let Some(edge) = edge else {
+            let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+            return self.memset(dst, fill_byte, size, align, flags);
+        };
+        let size = self.intcast(size, self.type_isize(), false);
+        let args = [dst, fill_byte, size, self.const_bool(volatile)];
+        let call = self.fault_intrinsic("llvm.fault.memset", &[self.type_ptr(), self.type_isize()], &args, edge);
+        self.align_callsite_args(call, &[(0, align)]);
+    }
+
     fn range_metadata(&mut self, load: &'ll Value, range: WrappingRange) {
         if self.cx.sess().opts.optimize == OptLevel::No {
             // Don't emit metadata we're not going to use
@@ -1906,6 +1993,45 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
         let (ty, f) = self.cx.get_intrinsic(base_name.into(), type_params);
         // No LLVM intrinsic returns its data indirectly (via `sret`).
         self.call(ty, None, None, f, ReturnSlot::Direct, args, None, None)
+    }
+
+    /// An invoke of a fault intrinsic: the memory access it lowers to unwinds to `edge.catch`.
+    fn fault_intrinsic(
+        &mut self,
+        base_name: &'static str,
+        type_params: &[&'ll Type],
+        args: &[&'ll Value],
+        edge: FaultEdge<&'ll BasicBlock>,
+    ) -> &'ll Value {
+        let (ty, f) = self.cx.get_intrinsic(base_name.into(), type_params);
+        self.invoke(ty, None, None, f, ReturnSlot::Direct, args, edge.then, edge.catch, None, None)
+    }
+
+    /// `llvm.fault.memcpy`/`memmove`, shaped like `llvm.memcpy`: the alignments ride as
+    /// `align` attributes on the pointer arguments.
+    fn fault_mem_intrinsic(
+        &mut self,
+        base_name: &'static str,
+        dst: &'ll Value,
+        dst_align: Align,
+        src: &'ll Value,
+        src_align: Align,
+        size: &'ll Value,
+        volatile: bool,
+        edge: FaultEdge<&'ll BasicBlock>,
+    ) {
+        let size = self.intcast(size, self.type_isize(), false);
+        let args = [dst, src, size, self.const_bool(volatile)];
+        let type_params = [self.type_ptr(), self.type_ptr(), self.type_isize()];
+        let call = self.fault_intrinsic(base_name, &type_params, &args, edge);
+        self.align_callsite_args(call, &[(0, dst_align), (1, src_align)]);
+    }
+
+    fn align_callsite_args(&mut self, call: &'ll Value, aligns: &[(u32, Align)]) {
+        for &(index, align) in aligns {
+            let attr = llvm::CreateAlignmentAttr(self.cx.llcx, align.bytes());
+            attributes::apply_to_callsite(call, llvm::AttributePlace::Argument(index), &[attr]);
+        }
     }
 
     fn call_lifetime_intrinsic(&mut self, intrinsic: &'static str, ptr: &'ll Value, size: Size) {

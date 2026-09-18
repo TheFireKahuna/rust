@@ -378,6 +378,13 @@ impl EarlySession {
         self.opts.cg.panic.unwrap_or(self.target.panic_strategy)
     }
 
+    /// Whether a raw-pointer access is an unwind edge to the frame's cleanup, so a hardware
+    /// fault at one runs exactly the live drops: `-Zprecise-fault-scopes` if given, otherwise
+    /// the target's default.
+    pub fn precise_fault_scopes(&self) -> bool {
+        self.opts.unstable_opts.precise_fault_scopes.unwrap_or(self.target.precise_fault_scopes)
+    }
+
     /// Get the deployment target on Apple platforms based on the standard environment variables,
     /// or fall back to the minimum version supported by `rustc`.
     ///

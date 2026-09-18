@@ -605,7 +605,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
 
                 self.schedule_drop_for_binding(var, irrefutable_pat.span, OutsideGuard);
-                self.flush_fault_scope(block, irrefutable_pat.span).unit()
+                block.unit()
             }
 
             _ => {
@@ -2512,9 +2512,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 guard_true_block,
                 schedule_drops,
                 by_value_bindings,
-            );
-
-            self.flush_fault_scope(guard_true_block, scrutinee_span)
+            )
         } else {
             // (Here, it is not too early to bind the matched
             // candidate on `block`, because there is no guard result
@@ -2523,8 +2521,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 block,
                 schedule_drops,
                 sub_branch.bindings.iter(),
-            );
-            self.flush_fault_scope(block, scrutinee_span)
+            )
         }
     }
 
@@ -2696,12 +2693,15 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         }
     }
 
+    /// Returns the block to continue in: a binding read through a raw pointer
+    /// is an unwind edge and starts a new one.
     fn bind_matched_candidate_for_arm_body<'b>(
         &mut self,
-        block: BasicBlock,
+        mut block: BasicBlock,
         schedule_drops: ScheduleDrops,
         bindings: impl IntoIterator<Item = &'b Binding<'tcx>>,
-    ) where
+    ) -> BasicBlock
+    where
         'tcx: 'b,
     {
         debug!("bind_matched_candidate_for_arm_body(block={:?})", block);
@@ -2723,7 +2723,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
             let rvalue = match binding.binding_mode.0 {
                 ByRef::No => {
-                    Rvalue::Use(self.consume_by_copy_or_move(binding.source), WithRetag::Yes)
+                    let operand = self.consume_by_copy_or_move(binding.source);
+                    if matches!(operand, Operand::Copy(_)) && self.place_derefs_raw(binding.source)
+                    {
+                        block = self.fault_read_into(block, source_info, local, binding.source);
+                        continue;
+                    }
+                    Rvalue::Use(operand, WithRetag::Yes)
                 }
                 ByRef::Yes(pinnedness, mutbl) => {
                     let rvalue =
@@ -2738,6 +2744,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             };
             self.cfg.push_assign(block, source_info, local, rvalue);
         }
+        block
     }
 
     /// Given an rvalue `&[mut]borrow` and a local `local`, generate the pinned borrow for it:

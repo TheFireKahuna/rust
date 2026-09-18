@@ -229,6 +229,7 @@ impl Target {
         forward!(entry_name);
         forward!(supports_fentry);
         forward!(supports_xray);
+        forward!(precise_fault_scopes);
 
         // we're going to run `update_from_cli`, but that won't change the target's AbiMap
         // FIXME: better factor the Target definition so we enforce this on a type level
@@ -417,6 +418,7 @@ impl ToJson for Target {
         target_option_val!(entry_abi);
         target_option_val!(supports_fentry);
         target_option_val!(supports_xray);
+        target_option_val!(precise_fault_scopes);
 
         // Serializing `-Clink-self-contained` needs a dynamic key to support the
         // backwards-compatible variants.
@@ -640,6 +642,7 @@ struct TargetSpecJson {
     entry_name: Option<StaticCow<str>>,
     supports_fentry: Option<bool>,
     supports_xray: Option<bool>,
+    precise_fault_scopes: Option<bool>,
     entry_abi: Option<ExternAbiWrapper>,
 }
 

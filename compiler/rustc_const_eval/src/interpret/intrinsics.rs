@@ -379,6 +379,23 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             sym::copy => {
                 self.copy_intrinsic(&args[0], &args[1], &args[2], /*nonoverlapping*/ false)?;
             }
+            sym::copy_nonoverlapping => {
+                self.copy_intrinsic(&args[0], &args[1], &args[2], /*nonoverlapping*/ true)?;
+            }
+            sym::read_via_copy => {
+                let [ptr] = args else {
+                    span_bug!(self.cur_span(), "invalid `read_via_copy` call")
+                };
+                let place = self.deref_pointer(ptr)?;
+                self.copy_op(&place, dest)?;
+            }
+            sym::write_via_move => {
+                let [ptr, val] = args else {
+                    span_bug!(self.cur_span(), "invalid `write_via_move` call")
+                };
+                let place = self.deref_pointer(ptr)?;
+                self.copy_op(val, &place)?;
+            }
             sym::write_bytes => {
                 self.write_bytes_intrinsic(&args[0], &args[1], &args[2], "write_bytes")?;
             }

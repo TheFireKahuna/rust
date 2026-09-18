@@ -42,6 +42,15 @@ pub enum ReturnSlot<V> {
     Indirect(V),
 }
 
+/// Where a memory access that may fault goes, under exact fault scopes: the
+/// access is an invoke whose unwind destination is `catch`, and execution
+/// continues in `then` when it does not fault.
+#[derive(Copy, Clone, Debug)]
+pub struct FaultEdge<B> {
+    pub then: B,
+    pub catch: B,
+}
+
 impl<V> ReturnSlot<V> {
     pub fn is_indirect(&self) -> bool {
         matches!(self, ReturnSlot::Indirect(_))
@@ -315,6 +324,86 @@ pub trait BuilderMethods<'a, 'tcx>:
         let null = self.const_null(self.type_ptr());
         let is_null = self.icmp(IntPredicate::IntNE, val, null);
         self.assume(is_null);
+    }
+
+    /// A load through a raw pointer that may fault: with an edge, the load as an invoke
+    /// unwinding to `edge.catch` and ending the block at `edge.then`; without one, the
+    /// plain load. A backend without fault edges branches to `then` after the plain access.
+    fn fault_load(
+        &mut self,
+        ty: Self::Type,
+        ptr: Self::Value,
+        align: Align,
+        volatile: bool,
+        edge: Option<FaultEdge<Self::BasicBlock>>,
+    ) -> Self::Value {
+        let val =
+            if volatile { self.volatile_load(ty, ptr, align) } else { self.load(ty, ptr, align) };
+        if let Some(edge) = edge {
+            self.br(edge.then);
+        }
+        val
+    }
+    fn fault_store(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        align: Align,
+        volatile: bool,
+        edge: Option<FaultEdge<Self::BasicBlock>>,
+    ) {
+        let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+        self.store_with_flags(val, ptr, align, flags);
+        if let Some(edge) = edge {
+            self.br(edge.then);
+        }
+    }
+    fn fault_memcpy(
+        &mut self,
+        dst: Self::Value,
+        dst_align: Align,
+        src: Self::Value,
+        src_align: Align,
+        size: Self::Value,
+        volatile: bool,
+        edge: Option<FaultEdge<Self::BasicBlock>>,
+    ) {
+        let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+        self.memcpy(dst, dst_align, src, src_align, size, flags, None);
+        if let Some(edge) = edge {
+            self.br(edge.then);
+        }
+    }
+    fn fault_memmove(
+        &mut self,
+        dst: Self::Value,
+        dst_align: Align,
+        src: Self::Value,
+        src_align: Align,
+        size: Self::Value,
+        volatile: bool,
+        edge: Option<FaultEdge<Self::BasicBlock>>,
+    ) {
+        let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+        self.memmove(dst, dst_align, src, src_align, size, flags);
+        if let Some(edge) = edge {
+            self.br(edge.then);
+        }
+    }
+    fn fault_memset(
+        &mut self,
+        dst: Self::Value,
+        fill_byte: Self::Value,
+        size: Self::Value,
+        align: Align,
+        volatile: bool,
+        edge: Option<FaultEdge<Self::BasicBlock>>,
+    ) {
+        let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+        self.memset(dst, fill_byte, size, align, flags);
+        if let Some(edge) = edge {
+            self.br(edge.then);
+        }
     }
 
     fn range_metadata(&mut self, load: Self::Value, range: WrappingRange);

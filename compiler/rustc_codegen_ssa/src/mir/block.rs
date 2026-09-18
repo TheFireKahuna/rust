@@ -17,7 +17,7 @@ use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout, ValidityRequire
 use rustc_middle::ty::print::{with_no_trimmed_paths, with_no_visible_paths};
 use rustc_middle::ty::{self, Instance, Ty, TypeVisitableExt};
 use rustc_session::config::OptLevel;
-use rustc_span::{Span, Spanned, bug, span_bug};
+use rustc_span::{Span, Spanned, bug, span_bug, sym};
 use rustc_target::callconv::{ArgAbi, ArgAttributes, CastTarget, FnAbi, PassMode};
 use tracing::{debug, info};
 
@@ -888,6 +888,208 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
     }
 
     /// Returns `Some` if this is indeed a panic intrinsic and codegen is done.
+    /// Where an intrinsic's result goes: the destination's place, or the operand local to
+    /// define once the value exists.
+    fn intrinsic_result_slot(
+        &mut self,
+        bx: &mut Bx,
+        destination: mir::Place<'tcx>,
+        result_layout: TyAndLayout<'tcx>,
+    ) -> (Option<PlaceValue<Bx::Value>>, Option<mir::Local>) {
+        if let Some(local) = destination.as_local() {
+            match self.locals[local] {
+                LocalRef::Place(dest) => (Some(dest.val), None),
+                LocalRef::UnsizedPlace(_) => bug!("return type must be sized"),
+                LocalRef::PendingOperand => (None, Some(local)),
+                LocalRef::Operand(_) => {
+                    if result_layout.is_zst() {
+                        let place =
+                            PlaceRef::new_sized(bx.const_undef(bx.type_ptr()), result_layout);
+                        (Some(place.val), None)
+                    } else {
+                        bug!("place local already assigned to");
+                    }
+                }
+            }
+        } else {
+            (Some(self.codegen_place(bx, destination.as_ref()).val), None)
+        }
+    }
+
+    /// A raw-pointer access under exact fault scopes: the memory operation as an invoke
+    /// whose unwind destination is the cleanup a fault at it reaches. Each access is its
+    /// own edge landing in a fresh block, and the last block branches to the target. `None`
+    /// when the call is not such an access, or the target has no landing pads.
+    fn codegen_fault_intrinsic(
+        &mut self,
+        helper: &TerminatorCodegenHelper<'tcx>,
+        bx: &mut Bx,
+        intrinsic: ty::IntrinsicDef,
+        instance: Instance<'tcx>,
+        args: &[Spanned<mir::Operand<'tcx>>],
+        destination: mir::Place<'tcx>,
+        target: Option<mir::BasicBlock>,
+        unwind: mir::UnwindAction,
+        mergeable_succ: bool,
+    ) -> Option<MergingSucc> {
+        let tcx = bx.tcx();
+        if !tcx.sess.precise_fault_scopes() || !tcx.intrinsic_may_fault(instance.def_id()) {
+            return None;
+        }
+        let Some(target) = target else {
+            bx.unreachable();
+            return Some(MergingSucc::False);
+        };
+        // Nothing to clean up is still an edge: the access is covered by a pad
+        // that resumes, where a plain access would be a gap. A funclet or wasm
+        // target has no such edge and gets the plain access.
+        let landingpads =
+            !base::wants_msvc_seh(&tcx.sess.target) && !base::wants_wasm_eh(&tcx.sess.target);
+        let catch = match unwind {
+            _ if !landingpads => None,
+            mir::UnwindAction::Cleanup(cleanup) if !self.nop_landing_pads.contains(cleanup) => {
+                Some(helper.llbb_with_cleanup(self, cleanup))
+            }
+            mir::UnwindAction::Cleanup(_) | mir::UnwindAction::Continue => {
+                Some(self.fault_resume_block())
+            }
+            mir::UnwindAction::Terminate(reason) => Some(self.terminate_block(reason, None)),
+            mir::UnwindAction::Unreachable => None,
+        };
+        let edge = |bx: &mut Bx| catch.map(|catch| FaultEdge { then: bx.append_sibling_block("fault"), catch });
+        let land = |bx: &mut Bx, edge: Option<FaultEdge<Bx::BasicBlock>>| {
+            if let Some(edge) = edge {
+                bx.switch_to_block(edge.then);
+            }
+        };
+
+        let name = intrinsic.name;
+        let fn_args = instance.args;
+        let args: Vec<_> = args.iter().map(|arg| self.codegen_operand(bx, &arg.node)).collect();
+        match name {
+            sym::read_via_copy | sym::volatile_load | sym::unaligned_volatile_load => {
+                let layout = bx.layout_of(fn_args.type_at(0));
+                let ptr = args[0].immediate();
+                let align =
+                    if name == sym::unaligned_volatile_load { Align::ONE } else { layout.align.abi };
+                let volatile = name != sym::read_via_copy;
+                let (result_place, store_in_local) =
+                    self.intrinsic_result_slot(bx, destination, layout);
+                // `None` once the value has been copied into the result place.
+                let val = if layout.is_zst() {
+                    Some(ZeroSized)
+                } else {
+                    match layout.backend_repr {
+                        BackendRepr::Scalar(scalar) => {
+                            let edge = edge(bx);
+                            let llty = bx.backend_type(layout);
+                            let val = bx.fault_load(llty, ptr, align, volatile, edge);
+                            land(bx, edge);
+                            Some(Immediate(bx.to_immediate_scalar(val, scalar)))
+                        }
+                        BackendRepr::ScalarPair { a, b, b_offset } => {
+                            let edge_a = edge(bx);
+                            let llty = bx.scalar_pair_element_backend_type(layout, 0, false);
+                            let va = bx.fault_load(llty, ptr, align, volatile, edge_a);
+                            land(bx, edge_a);
+                            let ptr_b = bx.inbounds_ptradd(ptr, bx.const_usize(b_offset.bytes()));
+                            let edge_b = edge(bx);
+                            let llty = bx.scalar_pair_element_backend_type(layout, 1, false);
+                            let align_b = align.restrict_for_offset(b_offset);
+                            let vb = bx.fault_load(llty, ptr_b, align_b, volatile, edge_b);
+                            land(bx, edge_b);
+                            Some(Pair(bx.to_immediate_scalar(va, a), bx.to_immediate_scalar(vb, b)))
+                        }
+                        _ => {
+                            let dest = match result_place {
+                                Some(place) => PlaceRef { val: place, layout },
+                                None => PlaceRef::alloca(bx, layout),
+                            };
+                            let edge = edge(bx);
+                            let size = bx.const_usize(layout.size.bytes());
+                            let (dst, dst_align) = (dest.val.llval, dest.val.align);
+                            bx.fault_memcpy(dst, dst_align, ptr, align, size, volatile, edge);
+                            land(bx, edge);
+                            if result_place.is_some() { None } else { Some(bx.load_operand(dest).val) }
+                        }
+                    }
+                };
+                match (result_place, store_in_local, val) {
+                    (None, Some(local), Some(val)) => {
+                        let op = OperandRef { val, layout, move_annotation: None };
+                        self.overwrite_local(local, LocalRef::Operand(op));
+                        self.debug_introduce_local(bx, local);
+                    }
+                    (Some(place), None, Some(val)) => {
+                        val.store(bx, PlaceRef { val: place, layout });
+                    }
+                    (Some(_), None, None) => {}
+                    _ => bug!(),
+                }
+            }
+            sym::write_via_move | sym::volatile_store | sym::unaligned_volatile_store => {
+                let ptr = args[0].immediate();
+                let layout = args[1].layout;
+                let align =
+                    if name == sym::unaligned_volatile_store { Align::ONE } else { layout.align.abi };
+                let volatile = name != sym::write_via_move;
+                match args[1].val {
+                    ZeroSized => {}
+                    Immediate(val) => {
+                        let edge = edge(bx);
+                        let val = bx.from_immediate(val);
+                        bx.fault_store(val, ptr, align, volatile, edge);
+                        land(bx, edge);
+                    }
+                    Pair(a, b) => {
+                        let BackendRepr::ScalarPair { b_offset, .. } = layout.backend_repr else {
+                            bug!("write of a pair to a non-pair layout {layout:#?}");
+                        };
+                        let edge_a = edge(bx);
+                        let a = bx.from_immediate(a);
+                        bx.fault_store(a, ptr, align, volatile, edge_a);
+                        land(bx, edge_a);
+                        let ptr_b = bx.inbounds_ptradd(ptr, bx.const_usize(b_offset.bytes()));
+                        let edge_b = edge(bx);
+                        let b = bx.from_immediate(b);
+                        bx.fault_store(b, ptr_b, align.restrict_for_offset(b_offset), volatile, edge_b);
+                        land(bx, edge_b);
+                    }
+                    Ref(place) => {
+                        assert_eq!(place.llextra, None, "cannot store unsized values");
+                        let edge = edge(bx);
+                        let size = bx.const_usize(layout.size.bytes());
+                        bx.fault_memcpy(ptr, align, place.llval, place.align, size, volatile, edge);
+                        land(bx, edge);
+                    }
+                }
+            }
+            sym::copy | sym::copy_nonoverlapping => {
+                let layout = bx.layout_of(fn_args.type_at(0));
+                let align = layout.align.abi;
+                let (src, dst, count) = (args[0].immediate(), args[1].immediate(), args[2].immediate());
+                let size = bx.unchecked_sumul(bx.const_usize(layout.size.bytes()), count);
+                let edge = edge(bx);
+                if name == sym::copy {
+                    bx.fault_memmove(dst, align, src, align, size, false, edge);
+                } else {
+                    bx.fault_memcpy(dst, align, src, align, size, false, edge);
+                }
+                land(bx, edge);
+            }
+            sym::write_bytes => {
+                let layout = bx.layout_of(fn_args.type_at(0));
+                let (dst, val, count) = (args[0].immediate(), args[1].immediate(), args[2].immediate());
+                let size = bx.mul(bx.const_usize(layout.size.bytes()), count);
+                let edge = edge(bx);
+                bx.fault_memset(dst, val, size, layout.align.abi, false, edge);
+                land(bx, edge);
+            }
+            _ => bug!("{name} is not a fault intrinsic"),
+        }
+        Some(helper.funclet_br(self, bx, target, mergeable_succ, &[]))
+    }
+
     fn codegen_panic_intrinsic(
         &mut self,
         helper: &TerminatorCodegenHelper<'tcx>,
@@ -1008,30 +1210,25 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             return merging_succ;
                         }
 
+                        if let Some(merging_succ) = self.codegen_fault_intrinsic(
+                            &helper,
+                            bx,
+                            intrinsic,
+                            instance,
+                            args,
+                            destination,
+                            target,
+                            unwind,
+                            mergeable_succ,
+                        ) {
+                            return merging_succ;
+                        }
+
                         let result_layout =
                             self.cx.layout_of(self.monomorphized_place_ty(destination.as_ref()));
 
                         let (result_place, store_in_local) =
-                            if let Some(local) = destination.as_local() {
-                                match self.locals[local] {
-                                    LocalRef::Place(dest) => (Some(dest.val), None),
-                                    LocalRef::UnsizedPlace(_) => bug!("return type must be sized"),
-                                    LocalRef::PendingOperand => (None, Some(local)),
-                                    LocalRef::Operand(_) => {
-                                        if result_layout.is_zst() {
-                                            let place = PlaceRef::new_sized(
-                                                bx.const_undef(bx.type_ptr()),
-                                                result_layout,
-                                            );
-                                            (Some(place.val), None)
-                                        } else {
-                                            bug!("place local already assigned to");
-                                        }
-                                    }
-                                }
-                            } else {
-                                (Some(self.codegen_place(bx, destination.as_ref()).val), None)
-                            };
+                            self.intrinsic_result_slot(bx, destination, result_layout);
 
                         if let Some(place) = result_place
                             && place.align < result_layout.align.abi
@@ -2227,6 +2424,17 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             cleanup_bx.br(llbb);
             cleanup_llbb
         }
+    }
+
+    fn fault_resume_block(&mut self) -> Bx::BasicBlock {
+        self.fault_resume_block.unwrap_or_else(|| {
+            let llbb = Bx::append_block(self.cx, self.llfn, "fault_resume");
+            let mut bx = Bx::build(self.cx, llbb);
+            let (exn0, exn1) = bx.cleanup_landing_pad(self.cx.eh_personality());
+            bx.resume(exn0, exn1);
+            self.fault_resume_block = Some(llbb);
+            llbb
+        })
     }
 
     fn unreachable_block(&mut self) -> Bx::BasicBlock {

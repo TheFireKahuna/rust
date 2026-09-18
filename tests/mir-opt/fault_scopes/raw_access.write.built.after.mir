@@ -1,0 +1,29 @@
+// MIR for `write` after built
+
+fn write(_1: *mut u32, _2: u32) -> () {
+    debug p => _1;
+    debug v => _2;
+    let mut _0: ();
+    let mut _3: u32;
+    let mut _4: u32;
+    let mut _5: *mut u32;
+    let mut _6: ();
+
+    bb0: {
+        StorageLive(_3);
+        _3 = copy _2;
+        _4 = move _3;
+        _5 = &raw mut (*_1);
+        _6 = write_via_move::<u32>(move _5, move _4) -> [return: bb1, unwind: bb2];
+    }
+
+    bb1: {
+        _0 = const ();
+        StorageDead(_3);
+        return;
+    }
+
+    bb2 (cleanup): {
+        resume;
+    }
+}

@@ -50,7 +50,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 } else {
                     let rhs = unpack!(block = this.as_local_rvalue(block, rhs));
                     let lhs = unpack!(block = this.as_place(block, lhs));
-                    this.cfg.push_assign(block, source_info, lhs, rhs);
+                    if this.place_derefs_raw(lhs) {
+                        let value = this.temp(lhs_expr.ty, lhs_expr.span);
+                        this.cfg.push_assign(block, source_info, value, rhs);
+                        block = this.fault_write(block, source_info, lhs, Operand::Move(value));
+                    } else {
+                        this.cfg.push_assign(block, source_info, lhs, rhs);
+                    }
                 }
 
                 this.block_context.pop();
@@ -73,6 +79,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // As above, RTL.
                 let rhs = unpack!(block = this.as_local_operand(block, rhs));
                 let lhs = unpack!(block = this.as_place(block, lhs));
+                let read = unpack!(block = this.fault_read_copy(block, source_info, lhs));
 
                 // we don't have to drop prior contents or anything
                 // because AssignOp is only legal for Copy types
@@ -83,11 +90,17 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         op.into(),
                         expr_span,
                         lhs_ty,
-                        Operand::Copy(lhs),
+                        Operand::Copy(read),
                         rhs
                     )
                 );
-                this.cfg.push_assign(block, source_info, lhs, result);
+                if this.place_derefs_raw(lhs) {
+                    let value = this.temp(lhs_ty, expr_span);
+                    this.cfg.push_assign(block, source_info, value, result);
+                    block = this.fault_write(block, source_info, lhs, Operand::Move(value));
+                } else {
+                    this.cfg.push_assign(block, source_info, lhs, result);
+                }
 
                 this.block_context.pop();
                 block.unit()

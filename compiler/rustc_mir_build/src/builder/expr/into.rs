@@ -854,9 +854,16 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
 
                 let place = unpack!(block = this.as_place(block, expr_id));
-                let rvalue = Rvalue::Use(this.consume_by_copy_or_move(place), WithRetag::Yes);
-                this.cfg.push_assign(block, source_info, destination, rvalue);
-                block.unit()
+                let operand = this.consume_by_copy_or_move(place);
+                // A copy out of a raw-pointer place is the access that faults; a
+                // move out of one stays a statement for borrowck to refuse.
+                if matches!(operand, Operand::Copy(_)) && this.place_derefs_raw(place) {
+                    this.fault_read_into(block, source_info, destination, place).unit()
+                } else {
+                    let rvalue = Rvalue::Use(operand, WithRetag::Yes);
+                    this.cfg.push_assign(block, source_info, destination, rvalue);
+                    block.unit()
+                }
             }
 
             ExprKind::Yield { value } => {

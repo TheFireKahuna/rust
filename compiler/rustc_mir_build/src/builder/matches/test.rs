@@ -17,11 +17,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::{DUMMY_SP, Span, Spanned, Symbol, bug, sym};
 use tracing::{debug, instrument};
 
-use crate::builder::Builder;
 use crate::builder::matches::{
     MatchPairKind, MatchPairTree, PatConstKind, SliceLenOp, Test, TestBranch, TestKind,
     TestableCase,
 };
+use crate::builder::{BlockAnd, Builder};
 
 impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// Identifies what test is needed to decide if `match_pair` is applicable.
@@ -67,7 +67,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         &mut self,
         match_start_span: Span,
         scrutinee_span: Span,
-        block: BasicBlock,
+        mut block: BasicBlock,
         otherwise_block: BasicBlock,
         place: Place<'tcx>,
         test: &Test<'tcx>,
@@ -78,6 +78,18 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         let target_block = |branch| target_blocks.get(&branch).copied().unwrap_or(otherwise_block);
 
         let source_info = self.source_info(test.span);
+        // A test that loads the place reads it through the fault edge first;
+        // the borrowing tests below leave the load to the callee.
+        let place = match test.kind {
+            TestKind::Switch { .. }
+            | TestKind::SwitchInt
+            | TestKind::If
+            | TestKind::ScalarEq { .. }
+            | TestKind::Range(_) => {
+                unpack!(block = self.fault_read_copy(block, self.source_info(scrutinee_span), place))
+            }
+            _ => place,
+        };
         match test.kind {
             TestKind::Switch { adt_def } => {
                 let otherwise_block = target_block(TestBranch::Failure);

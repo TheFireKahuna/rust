@@ -20,6 +20,10 @@ impl<'tcx> crate::MirPass<'tcx> for LowerIntrinsics {
             {
                 let generic_args = generic_args.no_bound_vars().unwrap();
                 match intrinsic.name {
+                    // Under exact fault scopes these stay calls: the terminator's unwind edge is
+                    // what a fault at the access takes.
+                    sym::read_via_copy | sym::copy_nonoverlapping
+                        if tcx.sess.precise_fault_scopes() => {}
                     sym::unreachable => {
                         terminator.kind = TerminatorKind::Unreachable;
                     }
