@@ -525,6 +525,18 @@ pub(crate) fn check_intrinsic_type(
         sym::volatile_load | sym::unaligned_volatile_load => {
             (1, 0, vec![Ty::new_imm_ptr(tcx, param(0))], param(0))
         }
+        sym::fault_probe_read => (
+            1,
+            0,
+            vec![Ty::new_imm_ptr(tcx, param(0)), Ty::new_mut_ptr(tcx, param(0))],
+            tcx.types.bool,
+        ),
+        sym::fault_probe_write => (
+            1,
+            0,
+            vec![Ty::new_mut_ptr(tcx, param(0)), Ty::new_imm_ptr(tcx, param(0))],
+            tcx.types.bool,
+        ),
         sym::volatile_store | sym::unaligned_volatile_store => {
             (1, 0, vec![Ty::new_mut_ptr(tcx, param(0)), param(0)], tcx.types.unit)
         }

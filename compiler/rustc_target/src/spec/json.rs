@@ -208,7 +208,6 @@ impl Target {
         forward!(eh_frame_header);
         forward!(has_thumb_interworking);
         forward!(eh_model);
-        forward!(windows_c_abi_sysv64);
         forward!(debuginfo_kind);
         forward!(split_debuginfo);
         forward!(supported_split_debuginfo);
@@ -404,7 +403,6 @@ impl ToJson for Target {
         target_option_val!(eh_frame_header);
         target_option_val!(has_thumb_interworking);
         target_option_val!(eh_model);
-        target_option_val!(windows_c_abi_sysv64);
         target_option_val!(debuginfo_kind);
         target_option_val!(split_debuginfo);
         target_option_val!(supported_split_debuginfo);
@@ -630,7 +628,6 @@ struct TargetSpecJson {
     eh_frame_header: Option<bool>,
     has_thumb_interworking: Option<bool>,
     eh_model: Option<EhModel>,
-    windows_c_abi_sysv64: Option<bool>,
     debuginfo_kind: Option<DebuginfoKind>,
     split_debuginfo: Option<SplitDebuginfo>,
     supported_split_debuginfo: Option<StaticCow<[SplitDebuginfo]>>,

@@ -550,6 +550,9 @@ pub(crate) fn llfn_attrs_from_instance<'ll, 'tcx>(
     }
     if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::RETURNS_TWICE) {
         to_add.push(AttributeKind::ReturnsTwice.create_attr(cx.llcx));
+        // The second return lands in a block that preserves no register, so
+        // every value live across the call is reloaded from the frame.
+        to_add.push(llvm::CreateAttrString(cx.llcx, "returns-twice-landing"));
     }
     if codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NAKED) {
         // do nothing; a naked function is converted into an extern function

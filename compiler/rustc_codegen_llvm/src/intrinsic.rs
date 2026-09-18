@@ -6,7 +6,7 @@ use rustc_abi::{
     AddressSpace, Align, BackendRepr, CVariadicStatus, Float, HasDataLayout, NumScalableVectors,
     Primitive, Size, WrappingRange,
 };
-use rustc_codegen_ssa::RetagInfo;
+use rustc_codegen_ssa::{MemFlags, RetagInfo};
 use rustc_codegen_ssa::base::{compare_simd_types, wants_msvc_seh, wants_wasm_eh};
 use rustc_codegen_ssa::common::{IntPredicate, TypeKind};
 use rustc_codegen_ssa::diagnostics::{ExpectedPointerMutability, InvalidMonomorphization};
@@ -353,6 +353,63 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 }
 
                 emit_va_arg(self, args[0], result_layout.ty)
+            }
+
+            sym::fault_probe_read | sym::fault_probe_write => {
+                // The access is a callbr of the probe intrinsic: its fault is the branch to
+                // `fault`, taken in this frame. The two destinations join on the outcome.
+                let ty = fn_args.type_at(0);
+                let layout = self.layout_of(ty);
+                if layout.is_zst() {
+                    return IntrinsicResult::Operand(OperandValue::Immediate(self.const_bool(true)));
+                }
+                let BackendRepr::Scalar(scalar) = layout.backend_repr else {
+                    self.tcx.dcx().span_err(
+                        span,
+                        "`fault_probe_read` and `fault_probe_write` need a type with a scalar layout",
+                    );
+                    return IntrinsicResult::Operand(OperandValue::Immediate(self.const_bool(false)));
+                };
+                let llty = self.type_from_scalar(scalar);
+                // The probed address need not be aligned; the caller's own
+                // location is.
+                let align = layout.align.abi;
+                // The fault destination is a landing pad of the access in the
+                // function's exception table, which a funclet personality has
+                // no place for: there the access is plain and recovers nothing.
+                if wants_msvc_seh(&self.tcx.sess.target) || wants_wasm_eh(&self.tcx.sess.target) {
+                    if name == sym::fault_probe_read {
+                        let value = self.volatile_load(llty, args[0].immediate(), Align::ONE);
+                        self.store(value, args[1].immediate(), align);
+                    } else {
+                        let value = self.load(llty, args[1].immediate(), align);
+                        self.store_with_flags(value, args[0].immediate(), Align::ONE, MemFlags::VOLATILE);
+                    }
+                    return IntrinsicResult::Operand(OperandValue::Immediate(self.const_bool(true)));
+                }
+                let ok = self.append_sibling_block("probe_ok");
+                let fault = self.append_sibling_block("probe_fault");
+                let join = self.append_sibling_block("probe_join");
+                if name == sym::fault_probe_read {
+                    let value =
+                        self.fault_probe_load(llty, args[0].immediate(), Align::ONE, ok, fault);
+                    self.switch_to_block(ok);
+                    self.store(value, args[1].immediate(), align);
+                } else {
+                    let value = self.load(llty, args[1].immediate(), align);
+                    self.fault_probe_store(value, args[0].immediate(), Align::ONE, ok, fault);
+                    self.switch_to_block(ok);
+                }
+                self.br(join);
+                self.switch_to_block(fault);
+                self.br(join);
+                self.switch_to_block(join);
+                let hit = self.phi(
+                    self.type_i1(),
+                    &[self.const_bool(true), self.const_bool(false)],
+                    &[ok, fault],
+                );
+                return IntrinsicResult::Operand(OperandValue::Immediate(hit));
             }
 
             sym::volatile_load | sym::unaligned_volatile_load => {

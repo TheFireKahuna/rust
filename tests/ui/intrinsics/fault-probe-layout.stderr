@@ -1,0 +1,8 @@
+error: `fault_probe_read` and `fault_probe_write` need a type with a scalar layout
+  --> $DIR/fault-probe-layout.rs:18:5
+   |
+LL |     fault_probe_read(src, dst)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+

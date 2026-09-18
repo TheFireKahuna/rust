@@ -13,17 +13,17 @@ impl<'tcx> crate::MirPass<'tcx> for LowerIntrinsics {
         let local_decls = &body.local_decls;
         for block in body.basic_blocks.as_mut() {
             let terminator = block.terminator.as_mut().unwrap();
-            if let TerminatorKind::Call { func, args, destination, target, .. } =
+            if let TerminatorKind::Call { func, args, destination, target, unwind, .. } =
                 &mut terminator.kind
                 && let ty::FnDef(def_id, generic_args) = *func.ty(local_decls, tcx).kind()
                 && let Some(intrinsic) = tcx.intrinsic(def_id)
             {
                 let generic_args = generic_args.no_bound_vars().unwrap();
                 match intrinsic.name {
-                    // Under exact fault scopes these stay calls: the terminator's unwind edge is
-                    // what a fault at the access takes.
+                    // A call that may unwind is an unwind edge of the access, which a plain
+                    // assignment cannot carry.
                     sym::read_via_copy | sym::copy_nonoverlapping
-                        if tcx.sess.precise_fault_scopes() => {}
+                        if !matches!(unwind, UnwindAction::Unreachable) => {}
                     sym::unreachable => {
                         terminator.kind = TerminatorKind::Unreachable;
                     }

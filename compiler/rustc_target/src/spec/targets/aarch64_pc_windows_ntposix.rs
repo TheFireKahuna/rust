@@ -14,9 +14,6 @@ pub(crate) fn target() -> Target {
     base.stack_probes = StackProbeType::None;
     base.default_codegen_units = Some(1);
 
-    // Deliberately NOT `windows_c_abi_sysv64`: the SysV flip is x86_64-only on
-    // the clang side too, and ARM64 Windows stays Win64/AAPCS throughout.
-
     Target {
         llvm_target: "aarch64-pc-windows-ntposix".into(),
         metadata: TargetMetadata {

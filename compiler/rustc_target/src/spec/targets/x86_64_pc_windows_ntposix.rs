@@ -17,9 +17,6 @@ pub(crate) fn target() -> Target {
     base.stack_probes = StackProbeType::None;
     base.default_codegen_units = Some(1);
 
-    // Plain `"C"` is SysV here, as it is on the clang side; `extern "system"`
-    // stays MS x64 for the ntdll boundary (pinned in `AbiMap`).
-    base.windows_c_abi_sysv64 = true;
 
     Target {
         llvm_target: "x86_64-pc-windows-ntposix".into(),

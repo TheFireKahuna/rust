@@ -2581,15 +2581,6 @@ pub struct TargetOptions {
     /// `is_like_msvc`, which is what every target did before this existed.
     pub eh_model: EhModel,
 
-    /// Whether the plain `"C"` ABI is SysV on this Windows target rather than
-    /// the MS x64 ABI. Only consulted on x86_64; AArch64 Windows targets are
-    /// Win64 regardless.
-    ///
-    /// A target setting this must also arrange for `extern "system"` to stay
-    /// Win64 (see `AbiMap`), since the NT boundary's ABI is externally fixed
-    /// and would otherwise silently follow `"C"`.
-    pub windows_c_abi_sysv64: bool,
-
     /// Which kind of debuginfo is used by this target?
     pub debuginfo_kind: DebuginfoKind,
     /// How to handle split debug information, if at all. Specifying `None` has
@@ -2869,7 +2860,6 @@ impl Default for TargetOptions {
             eh_frame_header: true,
             has_thumb_interworking: false,
             eh_model: Default::default(),
-            windows_c_abi_sysv64: false,
             debuginfo_kind: Default::default(),
             split_debuginfo: Default::default(),
             // `Off` is supported by default, but targets can remove this manually, e.g. Windows.

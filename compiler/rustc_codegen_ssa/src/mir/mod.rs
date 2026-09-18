@@ -7,7 +7,7 @@ use rustc_middle::mir;
 use rustc_middle::mir::{Body, Local, UnwindTerminateReason, traversal};
 use rustc_middle::ty::layout::{FnAbiOf, HasTyCtxt, HasTypingEnv, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt, TypeFoldable, TypeVisitableExt};
-use rustc_span::{ErrorGuaranteed, bug, span_bug};
+use rustc_span::{ErrorGuaranteed, bug, span_bug, sym};
 use rustc_target::callconv::{FnAbi, PassMode};
 use tracing::{debug, instrument};
 
@@ -244,6 +244,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         (block.is_cleanup && !nop_landing_pads.contains(bb))
             || matches!(block.terminator().unwind(), Some(mir::UnwindAction::Terminate(_)))
             || (precise_fault_scopes && block_has_fault_access(tcx, block))
+            || (!base::wants_new_eh_instructions(&tcx.sess.target) && block_probes(tcx, block))
     }) {
         start_bx.set_personality_fn(cx.eh_personality());
     }
@@ -460,6 +461,19 @@ fn optimize_use_clone<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 /// indirect.
 /// Whether `block` ends in a raw-pointer access that unwinds — an edge a
 /// landing pad must catch even where there is nothing to clean up.
+/// Whether the block's terminator is a fault probe, whose fault destination is
+/// a landing pad of the access and so needs an Itanium-style personality.
+fn block_probes<'tcx>(tcx: TyCtxt<'tcx>, block: &mir::BasicBlockData<'tcx>) -> bool {
+    let mir::TerminatorKind::Call { func, .. } = &block.terminator().kind else {
+        return false;
+    };
+    func.const_fn_def().is_some_and(|(def_id, _)| {
+        tcx.intrinsic(def_id).is_some_and(|intrinsic| {
+            matches!(intrinsic.name, sym::fault_probe_read | sym::fault_probe_write)
+        })
+    })
+}
+
 fn block_has_fault_access<'tcx>(tcx: TyCtxt<'tcx>, block: &mir::BasicBlockData<'tcx>) -> bool {
     let mir::TerminatorKind::Call { func, unwind, .. } = &block.terminator().kind else {
         return false;

@@ -1203,7 +1203,7 @@ pub(super) fn emit_va_arg<'ll, 'tcx>(
             ForceRightAdjust::No,
         ),
         // Windows x86_64
-        Arch::X86_64 if target.is_like_windows && target.env != Env::Ntposix => emit_ptr_va_arg(
+        Arch::X86_64 if target.is_like_windows => emit_ptr_va_arg(
             bx,
             addr,
             target_ty,

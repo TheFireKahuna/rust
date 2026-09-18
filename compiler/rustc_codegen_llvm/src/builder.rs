@@ -2007,6 +2007,38 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
         self.invoke(ty, None, None, f, ReturnSlot::Direct, args, edge.then, edge.catch, None, None)
     }
 
+    /// A probing load: `callbr @llvm.fault.probe.load`, continuing at `ok` with the value or at
+    /// `fault` in the same frame when the access faults.
+    pub(crate) fn fault_probe_load(
+        &mut self,
+        ty: &'ll Type,
+        ptr: &'ll Value,
+        align: Align,
+        ok: &'ll BasicBlock,
+        fault: &'ll BasicBlock,
+    ) -> &'ll Value {
+        let (fn_ty, f) =
+            self.cx.get_intrinsic("llvm.fault.probe.load".into(), &[ty, self.val_ty(ptr)]);
+        let args = [ptr, self.const_u32(align.bytes() as u32)];
+        self.callbr(fn_ty, None, None, f, &args, ok, &[fault], None, None)
+    }
+
+    /// A probing store, as [`Self::fault_probe_load`].
+    pub(crate) fn fault_probe_store(
+        &mut self,
+        val: &'ll Value,
+        ptr: &'ll Value,
+        align: Align,
+        ok: &'ll BasicBlock,
+        fault: &'ll BasicBlock,
+    ) {
+        let (fn_ty, f) = self
+            .cx
+            .get_intrinsic("llvm.fault.probe.store".into(), &[self.val_ty(val), self.val_ty(ptr)]);
+        let args = [val, ptr, self.const_u32(align.bytes() as u32)];
+        self.callbr(fn_ty, None, None, f, &args, ok, &[fault], None, None);
+    }
+
     /// `llvm.fault.memcpy`/`memmove`, shaped like `llvm.memcpy`: the alignments ride as
     /// `align` attributes on the pointer arguments.
     fn fault_mem_intrinsic(

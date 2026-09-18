@@ -580,6 +580,11 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
     let interesting_spans = process_builtin_attrs(tcx, did, attrs, &mut codegen_fn_attrs);
     handle_lang_items(tcx, did, &interesting_spans, attrs, &mut codegen_fn_attrs);
     apply_overrides(tcx, did, &mut codegen_fn_attrs);
+    // Under exact fault scopes a raw-pointer intrinsic is an unwind edge: the
+    // fault is the unwind, whatever `rustc_nounwind` says.
+    if tcx.sess.precise_fault_scopes() && tcx.intrinsic_may_fault(did.to_def_id()) {
+        codegen_fn_attrs.flags.remove(CodegenFnAttrFlags::NEVER_UNWIND);
+    }
     check_result(tcx, did, interesting_spans, &codegen_fn_attrs);
 
     codegen_fn_attrs

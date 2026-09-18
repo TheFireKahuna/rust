@@ -1053,6 +1053,36 @@ pub const unsafe fn volatile_set_memory<T>(dst: *mut T, val: u8, count: usize);
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const unsafe fn volatile_load<T>(src: *const T) -> T;
+
+/// Probes `src`: copies the `T` there into `dst` and returns `true`, or returns `false`
+/// without touching `dst` if the access faults because `src` is not mapped for reading.
+///
+/// The read has the effects of a volatile one and is never merged, moved or removed. Its
+/// fault destination is a landing pad of the access in the function's exception table,
+/// so the function carries the target's personality. On a target that unwinds through
+/// funclets, or whose backend cannot resume a fault, the read is plain and a fault is not
+/// recovered. `T` must have a scalar layout: an integer, a floating-point number or a
+/// thin pointer.
+///
+/// # Safety
+///
+/// `dst` must be valid for writes and aligned. `src` need be neither aligned nor mapped,
+/// and if it is mapped the bytes there must be a valid `T`. A fault at `src` is recovered
+/// only by a runtime that resumes the access at its landing pad.
+#[rustc_intrinsic]
+#[rustc_nounwind]
+pub unsafe fn fault_probe_read<T>(src: *const T, dst: *mut T) -> bool;
+
+/// Probes `dst`: copies the `T` at `src` there and returns `true`, or returns `false` if the
+/// access faults because `dst` is not mapped for writing. The write has the effects of a
+/// volatile one; the other conditions are those of [`fault_probe_read`].
+///
+/// # Safety
+///
+/// `src` must be valid for reads and aligned. `dst` need be neither aligned nor mapped.
+#[rustc_intrinsic]
+#[rustc_nounwind]
+pub unsafe fn fault_probe_write<T>(dst: *mut T, src: *const T) -> bool;
 /// Performs a volatile store to the `dst` pointer.
 ///
 /// The stabilized version of this intrinsic is [`core::ptr::write_volatile`].
