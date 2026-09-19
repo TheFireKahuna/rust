@@ -78,17 +78,16 @@ pub fn through_reference(r: &u32, _g: Guard) -> u32 {
     *r
 }
 
-// A raw access with nothing to clean up is still an edge: it unwinds to a pad
-// that resumes, so the frame is covered rather than a gap.
+// A raw access with nothing to clean up is still an edge: it unwinds to an
+// empty cleanup funclet, so the frame is covered rather than a gap.
 // CHECK-LABEL: @no_cleanup
 #[no_mangle]
 pub fn no_cleanup(p: *const u32) -> u32 {
     // ntposix: invoke i32 @llvm.fault.load.i32.p0(ptr {{.*}}, i32 4)
     // ntposix-NEXT: to label %{{.*}} unwind label %[[PAD:.*]]
     // ntposix: [[PAD]]:
-    // ntposix-NEXT: landingpad
-    // ntposix-NEXT: cleanup
-    // ntposix: resume
+    // ntposix-NEXT: %[[FUNCLET:.*]] = cleanuppad within none []
+    // ntposix-NEXT: cleanupret from %[[FUNCLET]] unwind to caller
     // msvc-NOT: llvm.fault
     unsafe { *p }
 }
