@@ -2595,6 +2595,16 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             // @llvm.wasm.get.ehselector selectors here. We want a catch_all so
             // we leave them out. This is intentionally diverging from the MSVC
             // behavior.
+        } else if base::wants_cleanup_funclets(&self.cx.sess().target) {
+            // A terminating cleanup funclet, marked by its one `true`
+            // argument: the backend gives its call sites the empty filter,
+            // the action nothing passes, so a search ends at them before any
+            // funclet is called. A landing pad here would be a site a callee's
+            // cleanup funclets could not be inlined into.
+            llbb = Bx::append_block(self.cx, self.llfn, "terminate");
+            bx = Bx::build(self.cx, llbb);
+            let marker = bx.const_bool(true);
+            funclet = Some(bx.cleanup_pad(None, &[marker]));
         } else {
             llbb = Bx::append_block(self.cx, self.llfn, "terminate");
             bx = Bx::build(self.cx, llbb);

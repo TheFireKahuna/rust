@@ -1,6 +1,8 @@
 // On a target whose cleanups are funclets, drop glue is a `cleanuppad` the
 // unwinder calls, a cross-funclet branch a `cleanupret` to the next, and the
-// same body on a landing-pad target is landing pads throughout.
+// abort pad of a body that cannot unwind a terminating funclet marked by its
+// one `true` argument; the same body on a landing-pad target is landing pads
+// throughout.
 //@ add-minicore
 //@ revisions: ntposix itanium
 //@ [ntposix] compile-flags: --target=x86_64-pc-windows-ntposix -Copt-level=0 -Cpanic=unwind
@@ -57,5 +59,16 @@ pub fn two_scopes() {
     let _outer = Guard;
     unsafe { may_unwind() }
     let _inner = Guard;
+    unsafe { may_unwind() }
+}
+
+// CHECK-LABEL: @cannot_unwind
+#[no_mangle]
+pub extern "C" fn cannot_unwind() {
+    // ntposix: %[[ABORT:.*]] = cleanuppad within none [i1 true]
+    // ntposix: call void @{{.*}}panic_cannot_unwind{{.*}}(){{.*}} [ "funclet"(token %[[ABORT]]) ]
+    // ntposix-NOT: landingpad
+    // itanium: landingpad { ptr, i32 }
+    // itanium-NEXT: filter [0 x ptr] zeroinitializer
     unsafe { may_unwind() }
 }

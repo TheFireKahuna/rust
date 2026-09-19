@@ -7,7 +7,9 @@ use rustc_abi::{
     Primitive, Size, WrappingRange,
 };
 use rustc_codegen_ssa::{MemFlags, RetagInfo};
-use rustc_codegen_ssa::base::{compare_simd_types, wants_msvc_seh, wants_wasm_eh};
+use rustc_codegen_ssa::base::{
+    compare_simd_types, wants_cleanup_funclets, wants_msvc_seh, wants_wasm_eh,
+};
 use rustc_codegen_ssa::common::{IntPredicate, TypeKind};
 use rustc_codegen_ssa::diagnostics::{ExpectedPointerMutability, InvalidMonomorphization};
 use rustc_codegen_ssa::mir::IntrinsicResult;
@@ -33,6 +35,7 @@ use rustc_target::spec::Arch;
 use tracing::debug;
 
 use crate::abi::FnAbiLlvmExt;
+use crate::attributes;
 use crate::builder::Builder;
 use crate::builder::autodiff::{adjust_activity_to_abi, generate_enzyme_call};
 use crate::builder::gpu_offload::{self, OffloadKernelDims, declare_omp_get_num_devices};
@@ -1754,7 +1757,7 @@ fn codegen_gnu_try<'ll, 'tcx>(
         let data = llvm::get_param(bx.llfn(), 1);
         let catch_func = llvm::get_param(bx.llfn(), 2);
         let try_func_ty = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        bx.invoke(
+        let invoke = bx.invoke(
             try_func_ty,
             None,
             None,
@@ -1766,6 +1769,15 @@ fn codegen_gnu_try<'ll, 'tcx>(
             None,
             None,
         );
+        // The catch is a landing pad; a body whose cleanups are funclets
+        // cannot be inlined into an invoke that unwinds to one.
+        if wants_cleanup_funclets(&bx.sess().target) {
+            attributes::apply_to_callsite(
+                invoke,
+                llvm::AttributePlace::Function,
+                &[llvm::AttributeKind::NoInline.create_attr(bx.cx().llcx)],
+            );
+        }
 
         bx.switch_to_block(then);
         bx.ret(bx.const_bool(false));

@@ -359,6 +359,12 @@ pub fn panic_in_cleanup() -> ! {
     loop {}
 }
 
+#[lang = "panic_cannot_unwind"]
+#[rustc_nounwind]
+pub fn panic_cannot_unwind() -> ! {
+    loop {}
+}
+
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize);
