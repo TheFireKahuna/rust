@@ -26,9 +26,11 @@ pub enum _Unwind_Context {}
     all(feature = "llvm-libunwind", any(target_os = "fuchsia", target_os = "linux")),
     link(name = "unwind", kind = "static", modifiers = "-bundle")
 )]
+#[cfg_attr(target_env = "ntposix", link(name = "nt", kind = "raw-dylib"))]
 unsafe extern "C-unwind" {
     pub fn _Unwind_Resume(exception: *mut _Unwind_Exception) -> !;
 }
+#[cfg_attr(target_env = "ntposix", link(name = "nt", kind = "raw-dylib"))]
 unsafe extern "C" {
     pub fn _Unwind_DeleteException(exception: *mut _Unwind_Exception);
     pub fn _Unwind_GetLanguageSpecificData(ctx: *mut _Unwind_Context) -> *mut c_void;
@@ -55,6 +57,7 @@ cfg_select! {
             all(feature = "llvm-libunwind", any(target_os = "fuchsia", target_os = "linux")),
             link(name = "unwind", kind = "static", modifiers = "-bundle")
         )]
+        #[cfg_attr(target_env = "ntposix", link(name = "nt", kind = "raw-dylib"))]
         unsafe extern "C" {
             pub fn _Unwind_GetGR(ctx: *mut _Unwind_Context, reg_index: c_int) -> _Unwind_Word;
             pub fn _Unwind_SetGR(ctx: *mut _Unwind_Context, reg_index: c_int, value: _Unwind_Word);
@@ -188,6 +191,7 @@ cfg_select! {
     all(feature = "llvm-libunwind", any(target_os = "fuchsia", target_os = "linux")),
     link(name = "unwind", kind = "static", modifiers = "-bundle")
 )]
+#[cfg_attr(target_env = "ntposix", link(name = "nt", kind = "raw-dylib"))]
 unsafe extern "C-unwind" {
     // 32-bit ARM Apple (except for watchOS armv7k specifically) uses SjLj
     #[cfg_attr(
@@ -199,7 +203,11 @@ unsafe extern "C-unwind" {
 
 cfg_select! {
     any(
-        all(windows, any(target_arch = "aarch64", target_arch = "x86_64"), target_env = "gnu"),
+        all(
+            windows,
+            any(target_arch = "aarch64", target_arch = "x86_64"),
+            any(target_env = "gnu", target_env = "ntposix"),
+        ),
         target_os = "cygwin",
     ) => {
         // We declare these as opaque types. This is fine since you just need to
@@ -217,7 +225,8 @@ cfg_select! {
             context: *mut _Unwind_Context,
         ) -> _Unwind_Reason_Code;
 
-        unsafe extern "C" {
+        #[cfg_attr(target_env = "ntposix", link(name = "nt", kind = "raw-dylib"))]
+        unsafe extern "system" {
             pub fn _GCC_specific_handler(
                 exceptionRecord: *mut EXCEPTION_RECORD,
                 establisherFrame: LPVOID,

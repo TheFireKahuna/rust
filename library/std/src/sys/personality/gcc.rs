@@ -287,19 +287,20 @@ cfg_select! {
                 all(
                     windows,
                     any(target_arch = "aarch64", target_arch = "x86_64"),
-                    target_env = "gnu"
+                    any(target_env = "gnu", target_env = "ntposix")
                 ),
                 target_os = "cygwin",
             ) => {
                 /// personality fn called by [Windows Structured Exception Handling][windows-eh]
                 ///
-                /// On x86_64 and AArch64 MinGW targets, the unwinding mechanism is SEH,
-                /// however the unwind handler data (aka LSDA) uses GCC-compatible encoding
+                /// On x86_64 and AArch64 MinGW and NT-POSIX targets, the unwinding mechanism is SEH,
+                /// however the unwind handler data (aka LSDA) uses GCC-compatible encoding.
+                /// `extern "system"` spells the dispatcher's convention, which is the C one on both.
                 ///
                 /// [windows-eh]: https://learn.microsoft.com/en-us/cpp/cpp/structured-exception-handling-c-cpp?view=msvc-170
                 #[lang = "eh_personality"]
                 #[allow(nonstandard_style)]
-                unsafe extern "C" fn rust_eh_personality(
+                unsafe extern "system" fn rust_eh_personality(
                     exceptionRecord: *mut uw::EXCEPTION_RECORD,
                     establisherFrame: uw::LPVOID,
                     contextRecord: *mut uw::CONTEXT,

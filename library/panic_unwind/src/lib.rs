@@ -33,7 +33,7 @@ use core::any::Any;
 
 cfg_select! {
     any(
-        all(target_family = "windows", target_env = "gnu"),
+        all(target_family = "windows", any(target_env = "gnu", target_env = "ntposix")),
         target_os = "psp",
         target_os = "xous",
         target_os = "solid_asp3",

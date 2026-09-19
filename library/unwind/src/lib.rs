@@ -11,7 +11,8 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 // Force libc to be included even if unused. This is required by many platforms.
-#[cfg(not(all(windows, target_env = "msvc")))]
+// NT-POSIX has no libc below it: the unwinder is nt.dll's, bound as a raw dylib.
+#[cfg(not(all(windows, any(target_env = "msvc", target_env = "ntposix"))))]
 extern crate libc as _;
 
 cfg_select! {
