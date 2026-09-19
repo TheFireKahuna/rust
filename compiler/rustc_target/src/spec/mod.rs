@@ -2631,6 +2631,11 @@ pub struct TargetOptions {
     /// a hardware fault at one runs exactly the live drops. `-Zprecise-fault-scopes` overrides.
     pub precise_fault_scopes: bool,
 
+    /// Whether a cleanup scope is lowered as a funclet the unwinder calls with the frame's
+    /// establisher, under an Itanium personality whose catches stay landing pads. Drop glue is
+    /// then a `cleanuppad` funclet and a raise makes one transfer, into the frame that caught it.
+    pub cleanup_funclets: bool,
+
     /// The default address space for this target. When using LLVM as a backend, most targets simply
     /// use LLVM's default address space (0). Some other targets, such as CHERI targets, use a
     /// custom default address space (in this specific case, `200`).
@@ -2874,6 +2879,7 @@ impl Default for TargetOptions {
             supports_fentry: false,
             supports_xray: false,
             precise_fault_scopes: false,
+            cleanup_funclets: false,
             default_address_space: rustc_abi::AddressSpace::ZERO,
             small_data_threshold_support: SmallDataThresholdSupport::DefaultForArch,
         }

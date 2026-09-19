@@ -67,6 +67,10 @@ pub(crate) fn opts() -> TargetOptions {
         // live drops of the faulting frame.
         precise_fault_scopes: true,
 
+        // A cleanup is a funclet the unwinder calls from where it stands; only
+        // a catch is landed, so one raise makes one kernel transfer.
+        cleanup_funclets: true,
+
         ..base
     }
 }

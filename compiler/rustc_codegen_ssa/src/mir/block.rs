@@ -953,7 +953,17 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             mir::UnwindAction::Cleanup(_) | mir::UnwindAction::Continue => {
                 Some(self.fault_resume_block())
             }
-            mir::UnwindAction::Terminate(reason) => Some(self.terminate_block(reason, None)),
+            mir::UnwindAction::Terminate(reason) => {
+                // A funclet has no unwind edge out of it: a fault in a cleanup
+                // on such a target is fatal at the access.
+                if self.mir[helper.bb].is_cleanup
+                    && base::wants_new_eh_instructions(&tcx.sess.target)
+                {
+                    None
+                } else {
+                    Some(self.terminate_block(reason, None))
+                }
+            }
             mir::UnwindAction::Unreachable => None,
         };
         let edge = |bx: &mut Bx| catch.map(|catch| FaultEdge { then: bx.append_sibling_block("fault"), catch });
@@ -2430,8 +2440,15 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         self.fault_resume_block.unwrap_or_else(|| {
             let llbb = Bx::append_block(self.cx, self.llfn, "fault_resume");
             let mut bx = Bx::build(self.cx, llbb);
-            let (exn0, exn1) = bx.cleanup_landing_pad(self.cx.eh_personality());
-            bx.resume(exn0, exn1);
+            if base::wants_new_eh_instructions(&self.cx.sess().target) {
+                // An empty funclet: the site is covered, and the unwinder
+                // continues past it.
+                let funclet = bx.cleanup_pad(None, &[]);
+                bx.cleanup_ret(&funclet, None);
+            } else {
+                let (exn0, exn1) = bx.cleanup_landing_pad(self.cx.eh_personality());
+                bx.resume(exn0, exn1);
+            }
             self.fault_resume_block = Some(llbb);
             llbb
         })
@@ -2488,7 +2505,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         let funclet;
         let llbb;
         let mut bx;
-        if base::wants_new_eh_instructions(&self.cx.sess().target) {
+        if base::wants_funclet_catches(&self.cx.sess().target) {
             // This is a basic block that we're aborting the program for,
             // notably in an `extern` function. These basic blocks are inserted
             // so that we assert that `extern` functions do indeed not panic,

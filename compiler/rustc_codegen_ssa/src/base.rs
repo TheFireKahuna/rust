@@ -389,10 +389,24 @@ pub fn wants_msvc_seh(target: &TargetSpec) -> bool {
     }
 }
 
+/// Returns `true` if this session's target lowers a cleanup scope as a
+/// funclet the unwinder calls, under an Itanium personality whose catches
+/// stay landing pads.
+pub fn wants_cleanup_funclets(target: &TargetSpec) -> bool {
+    target.cleanup_funclets
+}
+
 /// Returns `true` if this session's target requires the new exception
 /// handling LLVM IR instructions (catchpad / cleanuppad / ... instead
-/// of landingpad)
+/// of landingpad) for its cleanups.
 pub(crate) fn wants_new_eh_instructions(target: &TargetSpec) -> bool {
+    wants_wasm_eh(target) || wants_msvc_seh(target) || wants_cleanup_funclets(target)
+}
+
+/// Returns `true` if this session's target lowers its catches as funclets
+/// too: the terminate block is then a catch-all funclet and a fault probe a
+/// plain access, where a cleanup-funclet target keeps both as landing pads.
+pub(crate) fn wants_funclet_catches(target: &TargetSpec) -> bool {
     wants_wasm_eh(target) || wants_msvc_seh(target)
 }
 

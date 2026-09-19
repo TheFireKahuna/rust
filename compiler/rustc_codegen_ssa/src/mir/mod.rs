@@ -244,7 +244,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         (block.is_cleanup && !nop_landing_pads.contains(bb))
             || matches!(block.terminator().unwind(), Some(mir::UnwindAction::Terminate(_)))
             || (precise_fault_scopes && block_has_fault_access(tcx, block))
-            || (!base::wants_new_eh_instructions(&tcx.sess.target) && block_probes(tcx, block))
+            || (!base::wants_funclet_catches(&tcx.sess.target) && block_probes(tcx, block))
     }) {
         start_bx.set_personality_fn(cx.eh_personality());
     }
