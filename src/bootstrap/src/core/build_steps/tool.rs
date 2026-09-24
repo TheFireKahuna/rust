@@ -855,13 +855,27 @@ impl CommandLineStep for Cargo {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Cargo {
+        let builder = run.builder;
+        let ToolBuildResult { tool_path, .. } = builder.ensure(Cargo {
             build_compiler: get_tool_target_compiler(
-                run.builder,
+                builder,
                 ToolTargetBuildMode::Build(run.target),
             ),
             target: run.target,
         });
+
+        // ntposix: install into the top-stage compiler's sysroot like the
+        // extended tools, so a `rustup toolchain link` to that sysroot
+        // resolves the `cargo` proxy to this build rather than rustup's
+        // fallback.
+        let target_compiler = builder.compiler(builder.top_stage, run.target);
+        let bindir = builder.sysroot(target_compiler).join("bin");
+        t!(fs::create_dir_all(&bindir));
+        builder.copy_link(
+            &tool_path,
+            &bindir.join(exe("cargo", target_compiler.host)),
+            FileType::Executable,
+        );
     }
 
     fn run(self, builder: &Builder<'_>) -> ToolBuildResult {
@@ -1087,7 +1101,7 @@ impl CommandLineStep for RustAnalyzer {
     fn run(self, builder: &Builder<'_>) -> ToolBuildResult {
         let build_compiler = self.compilers.build_compiler;
         let target = self.compilers.target();
-        builder.ensure(ToolBuild {
+        let ToolBuildResult { tool_path, artifacts, .. } = builder.ensure(ToolBuild {
             build_compiler,
             target,
             tool: "rust-analyzer",
@@ -1098,7 +1112,18 @@ impl CommandLineStep for RustAnalyzer {
             allow_features: RustAnalyzer::ALLOW_FEATURES,
             cargo_args: Vec::new(),
             artifact_kind: ToolArtifactKind::Binary,
-        })
+        });
+
+        // ntposix: install into the compiler's sysroot like the extended tools,
+        // so a `rustup toolchain link` to the stage sysroot resolves the
+        // `rust-analyzer` proxy. The proc-macro server it spawns is the one in
+        // `<sysroot>/libexec`, built against this compiler's `proc_macro`.
+        builder.ensure(RustAnalyzerProcMacroSrv { compilers: self.compilers });
+        let bindir = builder.sysroot(self.compilers.target_compiler).join("bin");
+        t!(fs::create_dir_all(&bindir));
+        let bin = bindir.join(exe("rust-analyzer", self.compilers.target_compiler.host));
+        builder.copy_link(&tool_path, &bin, FileType::Executable);
+        ToolBuildResult { tool_path: bin, build_compiler, artifacts }
     }
 
     fn metadata(&self) -> Option<StepMetadata> {
@@ -1164,7 +1189,8 @@ impl CommandLineStep for RustAnalyzerProcMacroSrv {
         t!(fs::create_dir_all(&libexec_path));
         builder.copy_link(
             &tool_result.tool_path,
-            &libexec_path.join("rust-analyzer-proc-macro-srv"),
+            &libexec_path
+                .join(exe("rust-analyzer-proc-macro-srv", self.compilers.target_compiler.host)),
             FileType::Executable,
         );
 
