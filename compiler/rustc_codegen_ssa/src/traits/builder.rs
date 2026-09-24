@@ -42,13 +42,15 @@ pub enum ReturnSlot<V> {
     Indirect(V),
 }
 
-/// Where a memory access that may fault goes, under exact fault scopes: the
-/// access is an invoke whose unwind destination is `catch`, and execution
-/// continues in `then` when it does not fault.
+/// Where the fault of a memory access goes, under exact fault scopes.
 #[derive(Copy, Clone, Debug)]
-pub struct FaultEdge<B> {
-    pub then: B,
-    pub catch: B,
+pub enum FaultEdge<B> {
+    /// An invoke: the fault unwinds to `catch`, and execution continues in
+    /// `then` when the access does not fault.
+    Pad { then: B, catch: B },
+    /// A call that may unwind: the fault leaves the function, and execution
+    /// continues after the access.
+    Caller,
 }
 
 impl<V> ReturnSlot<V> {
@@ -326,9 +328,10 @@ pub trait BuilderMethods<'a, 'tcx>:
         self.assume(is_null);
     }
 
-    /// A load through a raw pointer that may fault: with an edge, the load as an invoke
-    /// unwinding to `edge.catch` and ending the block at `edge.then`; without one, the
-    /// plain load. A backend without fault edges branches to `then` after the plain access.
+    /// A load through a raw pointer that may fault: with a pad, the load as an invoke
+    /// unwinding to `catch` and ending the block at `then`; unwinding to the caller, a call
+    /// that may unwind; without an edge, the plain load. A backend without fault edges
+    /// branches to a pad's `then` after the plain access.
     fn fault_load(
         &mut self,
         ty: Self::Type,
@@ -339,8 +342,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     ) -> Self::Value {
         let val =
             if volatile { self.volatile_load(ty, ptr, align) } else { self.load(ty, ptr, align) };
-        if let Some(edge) = edge {
-            self.br(edge.then);
+        if let Some(FaultEdge::Pad { then, .. }) = edge {
+            self.br(then);
         }
         val
     }
@@ -354,8 +357,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     ) {
         let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
         self.store_with_flags(val, ptr, align, flags);
-        if let Some(edge) = edge {
-            self.br(edge.then);
+        if let Some(FaultEdge::Pad { then, .. }) = edge {
+            self.br(then);
         }
     }
     fn fault_memcpy(
@@ -370,8 +373,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     ) {
         let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
         self.memcpy(dst, dst_align, src, src_align, size, flags, None);
-        if let Some(edge) = edge {
-            self.br(edge.then);
+        if let Some(FaultEdge::Pad { then, .. }) = edge {
+            self.br(then);
         }
     }
     fn fault_memmove(
@@ -386,8 +389,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     ) {
         let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
         self.memmove(dst, dst_align, src, src_align, size, flags);
-        if let Some(edge) = edge {
-            self.br(edge.then);
+        if let Some(FaultEdge::Pad { then, .. }) = edge {
+            self.br(then);
         }
     }
     fn fault_memset(
@@ -401,8 +404,8 @@ pub trait BuilderMethods<'a, 'tcx>:
     ) {
         let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
         self.memset(dst, fill_byte, size, align, flags);
-        if let Some(edge) = edge {
-            self.br(edge.then);
+        if let Some(FaultEdge::Pad { then, .. }) = edge {
+            self.br(then);
         }
     }
 

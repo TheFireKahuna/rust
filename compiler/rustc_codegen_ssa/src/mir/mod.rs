@@ -92,10 +92,6 @@ pub struct FunctionCx<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> {
     /// Cached unreachable block
     unreachable_block: Option<Bx::BasicBlock>,
 
-    /// The pad a raw-pointer access with nothing to clean up unwinds to: it
-    /// lands and resumes, so the access is covered rather than a gap.
-    fault_resume_block: Option<Bx::BasicBlock>,
-
     /// Cached terminate upon unwinding block and its reason. For non-wasm
     /// targets, there is at most one such block per function, stored at index
     /// `START_BLOCK`. For wasm targets, each funclet needs its own terminate
@@ -240,7 +236,11 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let mut start_bx = Bx::build(cx, start_llbb);
 
     let precise_fault_scopes = tcx.sess.precise_fault_scopes();
-    if mir::traversal::mono_reachable(&mir, tcx, instance).any(|(bb, block)| {
+    // On a cleanup-funclet target a body whose ABI cannot unwind always has a
+    // table, so a search that reaches its frame ends at a gap there rather
+    // than passing a frame with no handler.
+    if (base::wants_cleanup_funclets(&tcx.sess.target) && !fn_abi.can_unwind)
+        || mir::traversal::mono_reachable(&mir, tcx, instance).any(|(bb, block)| {
         (block.is_cleanup && !nop_landing_pads.contains(bb))
             || matches!(block.terminator().unwind(), Some(mir::UnwindAction::Terminate(_)))
             || (precise_fault_scopes && block_has_fault_access(tcx, block))
@@ -269,7 +269,6 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         personality_slot: None,
         cached_llbbs,
         unreachable_block: None,
-        fault_resume_block: None,
         terminate_blocks: IndexVec::from_elem(None, &mir.basic_blocks),
         cleanup_kinds,
         landing_pads: IndexVec::from_elem(None, &mir.basic_blocks),

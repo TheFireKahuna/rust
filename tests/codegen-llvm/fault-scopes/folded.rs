@@ -28,6 +28,6 @@ pub fn local_round_trip(v: u32) -> u32 {
 // CHECK-LABEL: @raw_stays
 #[no_mangle]
 pub fn raw_stays(p: *const u32) -> u32 {
-    // CHECK: invoke i32 @llvm.fault.load.i32.p0(ptr {{.*}}, i32 4)
+    // CHECK: call i32 @llvm.fault.load.i32.p0(ptr {{.*}}, i32 4){{$}}
     unsafe { *p }
 }

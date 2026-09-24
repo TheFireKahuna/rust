@@ -49,6 +49,19 @@ enum CallKind {
     Tail,
 }
 
+/// What a search does at the call sites a cleanup funclet names: the value
+/// the pad's one argument carries on a cleanup-funclet target.
+#[derive(Copy, Clone)]
+enum PhaseOne {
+    /// The site's cleanup, and a search passes the site.
+    Pass = 0,
+    /// The site's cleanup, then the empty filter: the pads of a body whose ABI
+    /// cannot unwind, so a search ends at every site in it.
+    Boundary = 1,
+    /// The empty filter alone: the abort funclet of such a body.
+    Terminate = 2,
+}
+
 /// Used by `FunctionCx::codegen_terminator` for emitting common patterns
 /// e.g., creating a basic block, calling a function, etc.
 struct TerminatorCodegenHelper<'tcx> {
@@ -940,19 +953,26 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             bx.unreachable();
             return Some(MergingSucc::False);
         };
-        // Nothing to clean up is still an edge: the access is covered by a pad
-        // that resumes, where a plain access would be a gap. A funclet or wasm
-        // target has no such edge and gets the plain access.
+        // Nothing to clean up is still an edge: the access is a call that may
+        // unwind, whose site passes the fault to the caller, where a plain
+        // access would be a gap. A funclet or wasm target has no such edge and
+        // gets the plain access.
         let landingpads =
             !base::wants_msvc_seh(&tcx.sess.target) && !base::wants_wasm_eh(&tcx.sess.target);
+        // `None` is the plain access; `Some(None)` unwinds to the caller.
         let catch = match unwind {
             _ if !landingpads => None,
             mir::UnwindAction::Cleanup(cleanup) if !self.nop_landing_pads.contains(cleanup) => {
-                Some(helper.llbb_with_cleanup(self, cleanup))
+                Some(Some(helper.llbb_with_cleanup(self, cleanup)))
             }
-            mir::UnwindAction::Cleanup(_) | mir::UnwindAction::Continue => {
-                Some(self.fault_resume_block())
+            // A body that cannot unwind never resumes: with nothing to clean
+            // up, its access unwinds to the abort funclet.
+            mir::UnwindAction::Cleanup(_) | mir::UnwindAction::Continue
+                if !self.fn_abi.can_unwind =>
+            {
+                Some(Some(self.terminate_block(mir::UnwindTerminateReason::Abi, None)))
             }
+            mir::UnwindAction::Cleanup(_) | mir::UnwindAction::Continue => Some(None),
             mir::UnwindAction::Terminate(reason) => {
                 // A funclet has no unwind edge out of it: a fault in a cleanup
                 // on such a target is fatal at the access.
@@ -961,15 +981,20 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 {
                     None
                 } else {
-                    Some(self.terminate_block(reason, None))
+                    Some(Some(self.terminate_block(reason, None)))
                 }
             }
             mir::UnwindAction::Unreachable => None,
         };
-        let edge = |bx: &mut Bx| catch.map(|catch| FaultEdge { then: bx.append_sibling_block("fault"), catch });
+        let edge = |bx: &mut Bx| {
+            catch.map(|catch| match catch {
+                Some(catch) => FaultEdge::Pad { then: bx.append_sibling_block("fault"), catch },
+                None => FaultEdge::Caller,
+            })
+        };
         let land = |bx: &mut Bx, edge: Option<FaultEdge<Bx::BasicBlock>>| {
-            if let Some(edge) = edge {
-                bx.switch_to_block(edge.then);
+            if let Some(FaultEdge::Pad { then, .. }) = edge {
+                bx.switch_to_block(then);
             }
         };
 
@@ -2416,7 +2441,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         if base::wants_new_eh_instructions(&self.cx.sess().target) {
             let cleanup_bb = Bx::append_block(self.cx, self.llfn, &format!("funclet_{bb:?}"));
             let mut cleanup_bx = Bx::build(self.cx, cleanup_bb);
-            let funclet = cleanup_bx.cleanup_pad(None, &[]);
+            let clause = if self.fn_abi.can_unwind { PhaseOne::Pass } else { PhaseOne::Boundary };
+            let funclet = self.cleanup_pad(&mut cleanup_bx, clause);
             cleanup_bx.br(llbb);
             self.funclets[bb] = Some(funclet);
             cleanup_bb
@@ -2436,22 +2462,17 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         }
     }
 
-    fn fault_resume_block(&mut self) -> Bx::BasicBlock {
-        self.fault_resume_block.unwrap_or_else(|| {
-            let llbb = Bx::append_block(self.cx, self.llfn, "fault_resume");
-            let mut bx = Bx::build(self.cx, llbb);
-            if base::wants_new_eh_instructions(&self.cx.sess().target) {
-                // An empty funclet: the site is covered, and the unwinder
-                // continues past it.
-                let funclet = bx.cleanup_pad(None, &[]);
-                bx.cleanup_ret(&funclet, None);
-            } else {
-                let (exn0, exn1) = bx.cleanup_landing_pad(self.cx.eh_personality());
-                bx.resume(exn0, exn1);
-            }
-            self.fault_resume_block = Some(llbb);
-            llbb
-        })
+    /// Opens a cleanup pad at `bx`. On a cleanup-funclet target the pad's one
+    /// argument is the phase-one clause of every call site that names it,
+    /// which the backend requires on every pad and joins into each pad it
+    /// inlines at such a site.
+    fn cleanup_pad(&self, bx: &mut Bx, clause: PhaseOne) -> Bx::Funclet {
+        if base::wants_cleanup_funclets(&self.cx.sess().target) {
+            let clause = bx.const_u8(clause as u8);
+            bx.cleanup_pad(None, &[clause])
+        } else {
+            bx.cleanup_pad(None, &[])
+        }
     }
 
     fn unreachable_block(&mut self) -> Bx::BasicBlock {
@@ -2596,15 +2617,13 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             // we leave them out. This is intentionally diverging from the MSVC
             // behavior.
         } else if base::wants_cleanup_funclets(&self.cx.sess().target) {
-            // A terminating cleanup funclet, marked by its one `true`
-            // argument: the backend gives its call sites the empty filter,
-            // the action nothing passes, so a search ends at them before any
-            // funclet is called. A landing pad here would be a site a callee's
-            // cleanup funclets could not be inlined into.
+            // A terminating cleanup funclet: its call sites carry the empty
+            // filter alone, so a search ends at them before any funclet is
+            // called. A landing pad here would be a site a callee's cleanup
+            // funclets could not be inlined into.
             llbb = Bx::append_block(self.cx, self.llfn, "terminate");
             bx = Bx::build(self.cx, llbb);
-            let marker = bx.const_bool(true);
-            funclet = Some(bx.cleanup_pad(None, &[marker]));
+            funclet = Some(self.cleanup_pad(&mut bx, PhaseOne::Terminate));
         } else {
             llbb = Bx::append_block(self.cx, self.llfn, "terminate");
             bx = Bx::build(self.cx, llbb);

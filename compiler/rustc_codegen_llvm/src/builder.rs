@@ -1995,7 +1995,8 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
         self.call(ty, None, None, f, ReturnSlot::Direct, args, None, None)
     }
 
-    /// An invoke of a fault intrinsic: the memory access it lowers to unwinds to `edge.catch`.
+    /// A fault intrinsic: an invoke whose access unwinds to the pad, or a call that may unwind,
+    /// whose access unwinds to the caller.
     fn fault_intrinsic(
         &mut self,
         base_name: &'static str,
@@ -2004,7 +2005,12 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
         edge: FaultEdge<&'ll BasicBlock>,
     ) -> &'ll Value {
         let (ty, f) = self.cx.get_intrinsic(base_name.into(), type_params);
-        self.invoke(ty, None, None, f, ReturnSlot::Direct, args, edge.then, edge.catch, None, None)
+        match edge {
+            FaultEdge::Pad { then, catch } => {
+                self.invoke(ty, None, None, f, ReturnSlot::Direct, args, then, catch, None, None)
+            }
+            FaultEdge::Caller => self.call(ty, None, None, f, ReturnSlot::Direct, args, None, None),
+        }
     }
 
     /// A probing load: `callbr @llvm.fault.probe.load`, continuing at `ok` with the value or at

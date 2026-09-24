@@ -78,16 +78,28 @@ pub fn through_reference(r: &u32, _g: Guard) -> u32 {
     *r
 }
 
-// A raw access with nothing to clean up is still an edge: it unwinds to an
-// empty cleanup funclet, so the frame is covered rather than a gap.
+// A raw access with nothing to clean up is still an edge: a call that may
+// unwind, whose fault leaves the frame at a site of its own rather than at a
+// gap, with no funclet to call.
 // CHECK-LABEL: @no_cleanup
 #[no_mangle]
 pub fn no_cleanup(p: *const u32) -> u32 {
+    // ntposix: %[[V:.*]] = call i32 @llvm.fault.load.i32.p0(ptr {{.*}}, i32 4){{$}}
+    // ntposix-NEXT: ret i32 %[[V]]
+    // msvc-NOT: llvm.fault
+    unsafe { *p }
+}
+
+// In a body that cannot unwind, the same access unwinds to the abort funclet:
+// nothing there resumes, and the search ends at the site.
+// CHECK-LABEL: @no_cleanup_cannot_unwind
+#[no_mangle]
+pub extern "C" fn no_cleanup_cannot_unwind(p: *const u32) -> u32 {
     // ntposix: invoke i32 @llvm.fault.load.i32.p0(ptr {{.*}}, i32 4)
     // ntposix-NEXT: to label %{{.*}} unwind label %[[PAD:.*]]
     // ntposix: [[PAD]]:
-    // ntposix-NEXT: %[[FUNCLET:.*]] = cleanuppad within none []
-    // ntposix-NEXT: cleanupret from %[[FUNCLET]] unwind to caller
+    // ntposix-NEXT: %[[FUNCLET:.*]] = cleanuppad within none [i8 2]
+    // ntposix-NOT: unwind to caller
     // msvc-NOT: llvm.fault
     unsafe { *p }
 }
