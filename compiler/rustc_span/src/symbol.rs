@@ -892,6 +892,7 @@ symbols! {
         exp2f128,
         expect,
         expected,
+        experimental_nt_recovery_scope,
         expf16,
         expf32,
         expf64,

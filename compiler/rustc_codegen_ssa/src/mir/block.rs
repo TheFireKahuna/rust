@@ -1046,6 +1046,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                                 }
                                 (Some(instance), None)
                             }
+                            IntrinsicResult::Function(function) => (None, Some(function)),
                         }
                     }
 

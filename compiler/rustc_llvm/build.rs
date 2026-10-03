@@ -316,6 +316,18 @@ fn main() {
 
     let (llvm_kind, llvm_link_arg) = detect_llvm_link();
 
+    // A local LLVM archive can change without relinking llvm-config. Cargo must
+    // rebuild this crate so the compiler does not retain an older bundled LLVM.
+    if !is_crossed {
+        let mut files = Command::new(&llvm_config);
+        files.arg(llvm_link_arg).arg("--libfiles").args(&components);
+        for file in &quoted_split(files) {
+            if Path::new(&*file).is_file() {
+                println!("cargo:rerun-if-changed={file}");
+            }
+        }
+    }
+
     // Link in all LLVM libraries, if we're using the "wrong" llvm-config then
     // we don't pick up system libs because unfortunately they're for the host
     // of llvm-config, not the target that we're attempting to link.

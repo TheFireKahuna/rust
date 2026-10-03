@@ -664,10 +664,14 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                 ExternAbi::Win64 { .. } | ExternAbi::Vectorcall { .. } => {
                     x86_win64::compute_abi_info(cx, self)
                 }
+                ExternAbi::System { .. } if spec.is_like_windows => {
+                    x86_win64::compute_abi_info(cx, self)
+                }
                 _ => {
                     // `windows_c_abi_sysv64` targets classify `"C"` as SysV, matching
-                    // what LLVM lowers for them. `extern "system"` is pinned to Win64
-                    // in `AbiMap`, so it takes the arm above rather than this one.
+                    // what LLVM lowers for them. Classification receives the original
+                    // ExternAbi, not AbiMap's canonical convention, so System must
+                    // select Win64 explicitly above as well as in AbiMap.
                     if cx.target_spec().is_like_windows
                         && !cx.target_spec().windows_c_abi_sysv64
                     {

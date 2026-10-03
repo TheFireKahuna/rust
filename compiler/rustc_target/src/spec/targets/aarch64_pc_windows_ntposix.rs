@@ -3,7 +3,10 @@ use crate::spec::{Arch, FramePointer, StackProbeType, Target, TargetMetadata, ba
 pub(crate) fn target() -> Target {
     let mut base = base::windows_ntposix::opts();
     base.max_atomic_width = Some(128);
-    base.features = "+v8a,+neon,+lse,+lse2,+rcpc,+rcpc2,+fp16,+dpb,+paca,+pacg".into();
+    base.cpu = "generic".into();
+    base.features = "+v8.2a,+neon,+crc,+lse,+lse2,+rcpc,+rcpc-immo,+flagm,+dotprod,\
+                     +fullfp16,+rdm,+aes,+sha2,+ccpp,+pauth"
+        .into();
 
     // The frame pointer is required on ARM64 Windows: ETW and other services
     // fast-stack-walk through the {x29, x30} pair.

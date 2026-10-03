@@ -242,3 +242,10 @@ pub(crate) struct IntrinsicWrongArch<'a> {
     #[primary_span]
     pub span: Span,
 }
+
+#[derive(Diagnostic)]
+#[diag("experimental NT recovery requires Windows x86-64 or native AArch64")]
+pub(crate) struct NtRecoveryTarget {
+    #[primary_span]
+    pub span: Span,
+}

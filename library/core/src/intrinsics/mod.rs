@@ -2255,6 +2255,35 @@ pub unsafe fn catch_unwind<Data: ptr::Thin>(
     _catch_fn: unsafe fn(*mut Data, *mut u8),
 ) -> bool;
 
+/// Executes `body(data)` once within an experimental targeted NT recovery scope.
+/// Returns false after normal completion, or true after the runtime unwinds the
+/// body and resumes this scope's generated recovery point. Ordinary unwinding
+/// propagates to the caller; this operation does not install a catch-all handler.
+/// With EH-continuation guarding enabled, its recovery target is registered in
+/// that table for the runtime's unwind continuation policy.
+/// The compiler retains a separate capture activation without owned Rust values;
+/// target-frame cleanup therefore cannot destroy the caller's live values.
+///
+/// # Safety
+///
+/// `buffer` must supply three writable, pointer-aligned slots that stay live and
+/// exclusively owned by this scope until it returns or unwinds. They are an
+/// experimental capture record, not a public jump-buffer ABI. The runtime may
+/// publish the record only during `body`, must discharge intervening cleanup,
+/// and must retire the target before leaving the scope. It must never resume the
+/// scope twice. The body owns any values moved out of `data`; the caller must not
+/// read an uninitialized result or destroy those values again on either exit.
+///
+/// This intrinsic does not supply asynchronous cleanup coverage, target lifetime
+/// validation, FP policy, or an NT continuation implementation. It requires the
+/// matching experimental Windows x86-64 or native AArch64 backend.
+#[rustc_intrinsic]
+pub unsafe fn experimental_nt_recovery_scope<Data: ptr::Thin>(
+    body: unsafe fn(*mut Data),
+    data: *mut Data,
+    buffer: *mut usize,
+) -> bool;
+
 /// Emits a `nontemporal` store, which gives a hint to the CPU that the data should not be held
 /// in cache. Except for performance, this is fully equivalent to `ptr.write(val)`.
 ///
